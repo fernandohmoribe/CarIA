@@ -4,6 +4,8 @@ Company Imports. Lê direto da API REST (PostgREST) do projeto Supabase da
 loja, só leitura, sempre filtrando por veículo disponível e publicado.
 """
 
+from __future__ import annotations
+
 from collections import defaultdict
 
 import httpx

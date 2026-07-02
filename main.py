@@ -18,7 +18,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from claude_agent import get_ai_response
 from database import (
-    TERMINAL_LEAD_STATUSES,
+    CLOSED_LEAD_STATUSES,
+    SILENCED_LEAD_STATUSES,
     SessionLocal,
     close_conversation,
     create_lead_after_closure,
@@ -199,8 +200,8 @@ async def notify_staff(lead: dict, phone: str) -> None:
 
 
 async def handle_closed_lead_contact(phone: str, dealership_id: int, previous_status: str) -> None:
-    """Cliente cujo lead mais recente está encerrado (convertido/perdido) mandou mensagem de
-    novo. O bot não reengaja sozinho — manda só uma cortesia e cria um lead novo pra um vendedor
+    """Cliente cujo lead mais recente está fechado (ver CLOSED_LEAD_STATUSES) mandou mensagem
+    de novo. O bot não reengaja sozinho — manda só uma cortesia e cria um lead novo pra um vendedor
     revisar manualmente. Da mensagem seguinte em diante, o bot já responde normal nesse lead novo."""
     db = SessionLocal()
     try:
@@ -255,7 +256,11 @@ def _sync_process(phone: str, text: str, push_name: str):
 async def process_message(phone: str, text: str, push_name: str) -> None:
     await set_typing(phone)
     try:
-        ai_text, lead_to_notify, photos_to_send = await asyncio.to_thread(_sync_process, phone, text, push_name)
+        # asyncio.to_thread só existe a partir do Python 3.9 — este ambiente roda 3.8.
+        loop = asyncio.get_event_loop()
+        ai_text, lead_to_notify, photos_to_send = await loop.run_in_executor(
+            None, _sync_process, phone, text, push_name
+        )
         await send_message(phone, ai_text)
         if photos_to_send:
             await send_vehicle_photos(phone, photos_to_send)
@@ -324,8 +329,13 @@ async def webhook(request: Request):
     finally:
         db.close()
 
-    if lead_status in TERMINAL_LEAD_STATUSES:
-        asyncio.create_task(handle_closed_lead_contact(phone, dealership_id, lead_status))
+    if lead_status in SILENCED_LEAD_STATUSES:
+        if lead_status in CLOSED_LEAD_STATUSES:
+            asyncio.create_task(handle_closed_lead_contact(phone, dealership_id, lead_status))
+        else:
+            # transferido: já avisou "vou chamar um vendedor" — fica quieto, mesmo atendimento,
+            # sem cortesia repetida nem lead novo, só esperando um humano assumir.
+            logger.info(f"[SILENCIADO] {phone} — lead transferido, aguardando vendedor assumir")
         return JSONResponse({"status": "ok"})
 
     if text.lower().strip() in RESET_COMMANDS:

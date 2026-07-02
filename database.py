@@ -121,8 +121,16 @@ class Conversation(Base):
 # ── Leads ────────────────────────────────────────────────────────────────
 # novo e qualificado são calculados pela IA a partir da conversa — não entram no controle manual.
 # Os outros 5 dependem de uma ação humana (vendedor ligou, fechou venda, etc) e ficam editáveis
-# no painel admin. convertido/perdido são terminais: encerram a sessão e o bot para de responder
-# esse telefone (ver TERMINAL_LEAD_STATUSES em main.py).
+# no painel admin.
+#
+# SILENCED_LEAD_STATUSES: bot para de responder esse telefone (main.py checa a cada mensagem).
+#   - transferido: a IA desistiu e já avisou "vou chamar um vendedor" — fica em silêncio esperando
+#     um humano assumir, mas é o MESMO atendimento (conversa não é resetada, sem lead novo).
+#   - contatado/convertido/perdido: também fazem parte de CLOSED_LEAD_STATUSES (ver abaixo).
+#
+# CLOSED_LEAD_STATUSES (subconjunto de SILENCED): o assunto está genuinamente encerrado — além de
+#   silenciar, reseta a conversa; se o cliente insistir depois, recebe uma cortesia e um lead novo
+#   é criado pra revisão manual, em vez de reabrir o lead antigo.
 LEAD_STATUS_LABELS = {
     "novo": "Novo",
     "qualificado": "Qualificado",
@@ -133,7 +141,8 @@ LEAD_STATUS_LABELS = {
     "perdido": "Perdido",
 }
 MANUAL_LEAD_STATUSES = ["agendado", "transferido", "contatado", "convertido", "perdido"]
-TERMINAL_LEAD_STATUSES = {"convertido", "perdido"}
+CLOSED_LEAD_STATUSES = {"contatado", "convertido", "perdido"}
+SILENCED_LEAD_STATUSES = {"transferido"} | CLOSED_LEAD_STATUSES
 
 # Prioridade: normal | quente
 class Lead(Base):
@@ -396,22 +405,22 @@ def get_latest_lead_status(db, dealership_id: int, phone_number: str) -> str | N
 
 
 def set_lead_status(db, lead: Lead, status: str) -> Lead:
-    """Atualiza o status do lead. Se for terminal (convertido/perdido), também encerra a
-    sessão de conversa ativa — o atendimento por IA para nesse telefone (ver TERMINAL_LEAD_STATUSES
-    em main.py, que decide se responde ou não a próxima mensagem)."""
+    """Atualiza o status do lead. Se for um status "fechado" (ver CLOSED_LEAD_STATUSES), também
+    encerra a sessão de conversa ativa — main.py usa SILENCED_LEAD_STATUSES (mais amplo, inclui
+    transferido) pra decidir se o bot responde ou não a próxima mensagem."""
     lead.status = status
     lead.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(lead)
-    if status in TERMINAL_LEAD_STATUSES:
+    if status in CLOSED_LEAD_STATUSES:
         close_conversation(db, lead.phone_number, status)
     return lead
 
 
 def create_lead_after_closure(db, dealership_id: int, phone_number: str, previous_status: str) -> Lead:
-    """Cria um lead novo (status "novo") quando um cliente cujo lead anterior estava
-    encerrado (convertido/perdido) volta a mandar mensagem — pra alguém da loja revisar
-    manualmente por que ele voltou, em vez de reabrir o lead antigo já fechado."""
+    """Cria um lead novo (status "novo") quando um cliente cujo lead anterior estava fechado (ver
+    CLOSED_LEAD_STATUSES) volta a mandar mensagem — pra alguém da loja revisar manualmente por que
+    ele voltou, em vez de reabrir o lead antigo já fechado."""
     lead = Lead(
         dealership_id=dealership_id,
         phone_number=phone_number,

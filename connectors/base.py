@@ -15,6 +15,8 @@ Formato normalizado de imagem (dict):
     image_url, is_cover (bool), sort_order (int)
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 
