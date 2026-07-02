@@ -14,3 +14,7 @@ os.environ["TEST_PHONES"] = ""  # não deixa a whitelist do .env real (produçã
 os.environ.setdefault("ADMIN_USERNAME", "admin")
 os.environ.setdefault("ADMIN_PASSWORD", "test-password")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-placeholder")
+
+# Scripts manuais que batem na IA de verdade (chat_manual.py, scenarios_manual.py,
+# eval_prompt.py) não usam prefixo test_ de propósito — ver CLAUDE.md — então o pytest nem
+# tenta coletar nada deles, sem precisar de collect_ignore aqui.

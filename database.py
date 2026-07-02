@@ -107,11 +107,19 @@ class VehicleImage(Base):
 
 # ── Conversas ────────────────────────────────────────────────────────────
 # Status possíveis: active | completed | expired | reset
+#
+# A sessão em si continua sendo por phone_number (é assim que o WhatsApp funciona — uma thread
+# por número). lead_id é só uma marcação de qual lead estava em pauta durante essa sessão —
+# importante porque o mesmo telefone pode ter vários leads ao longo do tempo (ver
+# create_lead_after_closure em database.py): sem isso, o histórico de conversa de um lead
+# reaberto mostraria tudo daquele telefone desde sempre, misturado com leads antigos já fechados.
+# Fica nullable porque a 1ª mensagem de uma conversa nova pode chegar antes de existir lead ainda.
 class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     phone_number = Column(String, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
     status = Column(String, default="active")
     messages_json = Column(Text, default="[]")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -183,6 +191,37 @@ class Lead(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
+# ── Usuários ─────────────────────────────────────────────────────────────
+# Versão mínima, só pra existir alguém pra referenciar em lead_historico.user_id — ainda não tem
+# perfis/permissões (admin vs vendedor, ver MELHORIAS). Um usuário especial "IA" representa
+# mudanças automáticas feitas pelo bot, sem intervenção humana.
+IA_USERNAME = "IA"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    nome = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Histórico de status do lead ─────────────────────────────────────────
+class LeadHistorico(Base):
+    __tablename__ = "lead_historico"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status_anterior = Column(String)
+    status_novo = Column(String)
+    observacao = Column(Text, nullable=True)
+    data = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -212,6 +251,22 @@ def get_or_create_dealership(db, nome: str, connector_type: str, connector_confi
 
 def get_default_dealership(db) -> Dealership | None:
     return db.query(Dealership).order_by(Dealership.id.asc()).first()
+
+
+# ── Usuários ─────────────────────────────────────────────────────────────
+def get_or_create_user(db, username: str, nome: str | None = None) -> User:
+    user = db.query(User).filter(User.username == username).first()
+    if user:
+        return user
+    user = User(username=username, nome=nome or username)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def get_ia_user(db) -> User:
+    return get_or_create_user(db, IA_USERNAME, "Inteligência Artificial")
 
 
 # ── Estoque ──────────────────────────────────────────────────────────────
@@ -286,8 +341,8 @@ def _get_active(db, phone_number: str):
     )
 
 
-def _new_session(db, phone_number: str) -> "Conversation":
-    conv = Conversation(phone_number=phone_number, status="active")
+def _new_session(db, phone_number: str, lead_id: int | None = None) -> "Conversation":
+    conv = Conversation(phone_number=phone_number, status="active", lead_id=lead_id)
     db.add(conv)
     db.commit()
     db.refresh(conv)
@@ -306,17 +361,22 @@ def get_conversation_updated_at(db, phone_number: str):
     return conv.updated_at if conv else None
 
 
-def save_conversation(db, phone_number: str, messages: list) -> None:
+def save_conversation(db, phone_number: str, messages: list, lead_id: int | None = None) -> None:
     conv = _get_active(db, phone_number)
     if not conv:
-        conv = _new_session(db, phone_number)
+        conv = _new_session(db, phone_number, lead_id)
     conv.messages_json = json.dumps(messages, ensure_ascii=False)
     conv.updated_at = datetime.utcnow()
+    if lead_id is not None and conv.lead_id is None:
+        # marca com o lead assim que ele existir — a 1ª mensagem de uma conversa pode chegar
+        # antes da IA ter chamado criar_ou_atualizar_lead pela primeira vez.
+        conv.lead_id = lead_id
     db.commit()
 
 
 def close_conversation(db, phone_number: str, reason: str = "completed") -> None:
-    """Fecha a sessão ativa e abre uma nova vazia."""
+    """Fecha a sessão ativa e abre uma nova vazia (sem lead_id — a próxima save_conversation
+    marca com o lead que estiver em pauta nesse momento, que pode ser um lead novo)."""
     conv = _get_active(db, phone_number)
     if conv:
         conv.status = reason
@@ -325,10 +385,12 @@ def close_conversation(db, phone_number: str, reason: str = "completed") -> None
     _new_session(db, phone_number)
 
 
-def get_conversation_history(db, phone_number: str) -> list["Conversation"]:
+def get_conversation_history_for_lead(db, lead_id: int) -> list["Conversation"]:
+    """Histórico de conversa escopado a UM lead específico — usado no painel, pra não misturar
+    sessões de leads antigos já fechados quando o mesmo telefone gera um lead novo."""
     return (
         db.query(Conversation)
-        .filter(Conversation.phone_number == phone_number)
+        .filter(Conversation.lead_id == lead_id)
         .order_by(Conversation.created_at.desc())
         .all()
     )
@@ -372,7 +434,38 @@ LEAD_UPDATABLE_FIELDS = {
 }
 
 
+def log_status_change(
+    db, lead_id: int, user_id: int | None, status_anterior: str | None, status_novo: str, observacao: str | None = None
+) -> None:
+    """Registra uma linha no histórico só quando o status de fato muda de valor —
+    chamadas que atualizam outros campos do lead sem tocar o status não geram entrada."""
+    if status_anterior == status_novo:
+        return
+    db.add(
+        LeadHistorico(
+            lead_id=lead_id,
+            user_id=user_id,
+            status_anterior=status_anterior,
+            status_novo=status_novo,
+            observacao=observacao,
+        )
+    )
+    db.commit()
+
+
+def get_lead_historico(db, lead_id: int) -> list[LeadHistorico]:
+    return (
+        db.query(LeadHistorico)
+        .filter(LeadHistorico.lead_id == lead_id)
+        .order_by(LeadHistorico.data.desc())
+        .all()
+    )
+
+
 def update_lead(db, lead: Lead, fields: dict) -> Lead:
+    """Atualização feita pela IA via tool `criar_ou_atualizar_lead`. Se o status mudar de
+    valor nessa chamada, registra no histórico com o usuário especial "IA"."""
+    status_anterior = lead.status
     for key, value in fields.items():
         if key in LEAD_UPDATABLE_FIELDS and value is not None:
             setattr(lead, key, value)
@@ -380,6 +473,9 @@ def update_lead(db, lead: Lead, fields: dict) -> Lead:
     lead.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(lead)
+    if lead.status != status_anterior:
+        ia_user = get_ia_user(db)
+        log_status_change(db, lead.id, ia_user.id, status_anterior, lead.status)
     return lead
 
 
@@ -394,26 +490,33 @@ def get_lead_by_id(db, lead_id: int) -> Lead | None:
     return db.query(Lead).filter(Lead.id == lead_id).first()
 
 
-def get_latest_lead_status(db, dealership_id: int, phone_number: str) -> str | None:
-    lead = (
+def get_latest_lead(db, dealership_id: int, phone_number: str) -> Lead | None:
+    return (
         db.query(Lead)
         .filter(Lead.dealership_id == dealership_id, Lead.phone_number == phone_number)
         .order_by(Lead.created_at.desc())
         .first()
     )
+
+
+def get_latest_lead_status(db, dealership_id: int, phone_number: str) -> str | None:
+    lead = get_latest_lead(db, dealership_id, phone_number)
     return lead.status if lead else None
 
 
-def set_lead_status(db, lead: Lead, status: str) -> Lead:
-    """Atualiza o status do lead. Se for um status "fechado" (ver CLOSED_LEAD_STATUSES), também
-    encerra a sessão de conversa ativa — main.py usa SILENCED_LEAD_STATUSES (mais amplo, inclui
-    transferido) pra decidir se o bot responde ou não a próxima mensagem."""
+def set_lead_status(db, lead: Lead, status: str, user_id: int | None = None, observacao: str | None = None) -> Lead:
+    """Atualiza o status do lead manualmente (painel admin). Se for um status "fechado" (ver
+    CLOSED_LEAD_STATUSES), também encerra a sessão de conversa ativa — main.py usa
+    SILENCED_LEAD_STATUSES (mais amplo, inclui transferido) pra decidir se o bot responde ou não
+    a próxima mensagem. Registra a mudança em lead_historico com quem fez (user_id) e por quê."""
+    status_anterior = lead.status
     lead.status = status
     lead.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(lead)
     if status in CLOSED_LEAD_STATUSES:
         close_conversation(db, lead.phone_number, status)
+    log_status_change(db, lead.id, user_id, status_anterior, status, observacao)
     return lead
 
 

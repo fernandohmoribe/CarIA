@@ -1,12 +1,13 @@
 """
-Cenários de teste automatizados — executa conversas pré-definidas e mostra o
-comportamento da IA. Os veículos citados existem de verdade no banco local
-(sincronizado do estoque da Company Imports).
+Cenários manuais — executa conversas pré-definidas contra a IA de verdade (bate na API
+Anthropic, custa $) e mostra o comportamento na tela. Os veículos citados existem de verdade
+no banco local (sincronizado do estoque da Company Imports). NÃO é teste automatizado — não
+roda via pytest, só invocação direta e com autorização explícita (ver CLAUDE.md).
 
 Uso:
-    python tests/test_scenarios.py              # roda todos os cenários
-    python tests/test_scenarios.py --id 3        # roda só o cenário 3
-    python tests/test_scenarios.py --list        # lista os cenários disponíveis
+    python tests/scenarios_manual.py              # roda todos os cenários
+    python tests/scenarios_manual.py --id 3        # roda só o cenário 3
+    python tests/scenarios_manual.py --list        # lista os cenários disponíveis
 """
 
 import os

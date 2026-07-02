@@ -1,10 +1,12 @@
 """
-Chat de teste local — testa a IA sem WhatsApp, salva no banco.
+Chat manual local — conversa com a IA de verdade (bate na API Anthropic, custa $), sem
+WhatsApp, salva no banco. NÃO é teste automatizado — não roda via pytest, só invocação
+direta e com autorização explícita (ver CLAUDE.md).
 
 Uso:
-    python tests/test_chat.py
-    python tests/test_chat.py --name "João Silva"   # simula push_name
-    python tests/test_chat.py --phone 5544999999999  # simula número específico
+    python tests/chat_manual.py
+    python tests/chat_manual.py --name "João Silva"   # simula push_name
+    python tests/chat_manual.py --phone 5544999999999  # simula número específico
 
 Comandos durante o chat:
     /reset    — limpa o histórico (nova conversa)

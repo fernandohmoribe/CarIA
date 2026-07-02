@@ -13,9 +13,11 @@ from database import (
     SessionLocal,
     get_all_leads,
     get_available_vehicles,
-    get_conversation_history,
+    get_conversation_history_for_lead,
     get_default_dealership,
     get_lead_by_id,
+    get_lead_historico,
+    get_or_create_user,
     set_lead_status,
 )
 from dealership_config import to_local
@@ -77,6 +79,7 @@ async def login_form(request: Request):
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if check_credentials(username, password):
         request.session["logged_in"] = True
+        request.session["username"] = username
         return RedirectResponse(url="/admin/dashboard", status_code=302)
     return templates.TemplateResponse(
         "login.html", {"request": request, "error": "Usuário ou senha inválidos."}, status_code=401
@@ -178,7 +181,7 @@ async def lead_detail_page(request: Request, lead_id: int):
         if not lead:
             return RedirectResponse(url="/admin/leads", status_code=302)
 
-        history = get_conversation_history(db, lead.phone_number)
+        history = get_conversation_history_for_lead(db, lead.id)
         conversas = []
         for conv in history:
             try:
@@ -186,6 +189,8 @@ async def lead_detail_page(request: Request, lead_id: int):
             except json.JSONDecodeError:
                 mensagens = []
             conversas.append({"status": conv.status, "created_at": conv.created_at, "mensagens": mensagens})
+
+        historico = get_lead_historico(db, lead.id)
 
         return templates.TemplateResponse(
             "lead_detail.html",
@@ -195,6 +200,7 @@ async def lead_detail_page(request: Request, lead_id: int):
                 "conversas": conversas,
                 "manual_statuses": MANUAL_LEAD_STATUSES,
                 "status_labels": LEAD_STATUS_LABELS,
+                "historico": historico,
             },
         )
     finally:
@@ -202,7 +208,7 @@ async def lead_detail_page(request: Request, lead_id: int):
 
 
 @router.post("/leads/{lead_id}/status")
-async def update_lead_status(request: Request, lead_id: int, status: str = Form(...)):
+async def update_lead_status(request: Request, lead_id: int, status: str = Form(...), observacao: str = Form("")):
     redirect = require_login(request)
     if redirect:
         return redirect
@@ -214,7 +220,9 @@ async def update_lead_status(request: Request, lead_id: int, status: str = Form(
     try:
         lead = get_lead_by_id(db, lead_id)
         if lead:
-            set_lead_status(db, lead, status)
+            username = request.session.get("username") or "admin"
+            user = get_or_create_user(db, username)
+            set_lead_status(db, lead, status, user_id=user.id, observacao=observacao.strip() or None)
     finally:
         db.close()
 

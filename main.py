@@ -26,6 +26,7 @@ from database import (
     get_conversation,
     get_conversation_updated_at,
     get_default_dealership,
+    get_latest_lead,
     get_latest_lead_status,
     lead_to_dict,
     save_conversation,
@@ -246,7 +247,12 @@ def _sync_process(phone: str, text: str, push_name: str):
         history.append({"role": "assistant", "content": ai_text})
         if len(history) > 20:
             history = history[-20:]
-        save_conversation(db, phone, history)
+
+        # busca de novo (não reusa o lead_to_notify, que só vem preenchido quando notifica) —
+        # pega o lead mais recente pra marcar a conversa, mesmo que a IA não tenha notificado nada.
+        dealership = get_default_dealership(db)
+        lead = get_latest_lead(db, dealership.id, phone) if dealership else None
+        save_conversation(db, phone, history, lead_id=lead.id if lead else None)
 
         return ai_text, lead_to_notify, photos_to_send
     finally:

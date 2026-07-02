@@ -11,6 +11,7 @@ from database import (
     SessionLocal,
     create_lead_after_closure,
     get_conversation,
+    get_conversation_history_for_lead,
     get_latest_lead_status,
     get_or_create_dealership,
     save_conversation,
@@ -331,3 +332,161 @@ def test_webhook_ai_called_only_for_non_silenced_statuses(status):
             mock_ai.assert_not_called()
         else:
             mock_ai.assert_called_once()
+
+
+def test_conversation_history_scoped_to_lead_not_mixed_across_reopened_leads():
+    """Reproduz o cenário que motivou conversations.lead_id: mesmo telefone gera um lead
+    fechado e depois um lead novo (reengajamento) — as conversas de cada um não podem se
+    misturar quando alguém abre o lead no painel."""
+    import time
+
+    from fastapi.testclient import TestClient
+    import main
+    from database import get_default_dealership
+
+    db = SessionLocal()
+    dealership = get_default_dealership(db) or _make_dealership(db, "Loja Escopo Conversa")
+    dealership_id = dealership.id
+    phone = "5544900000110@c.us"
+    old_lead = Lead(dealership_id=dealership_id, phone_number=phone, status="novo")
+    db.add(old_lead)
+    db.commit()
+    db.refresh(old_lead)
+    old_lead_id = old_lead.id
+    db.close()
+
+    payload = {
+        "event": "message",
+        "payload": {
+            "fromMe": False,
+            "from": phone,
+            "hasMedia": False,
+            "body": "quero saber sobre um carro",
+            "_data": {"notifyName": "Cliente Escopo"},
+        },
+    }
+
+    # 1) primeira mensagem, ainda no lead antigo
+    with patch.object(main, "get_ai_response") as mock_ai, \
+         patch.object(main, "send_message", new=AsyncMock()), \
+         patch.object(main, "set_typing", new=AsyncMock()):
+        mock_ai.return_value = ("resposta pro lead antigo", None, None)
+        client = TestClient(main.app)
+        client.post("/webhook/whatsapp", json=payload)
+        time.sleep(0.3)
+
+    # 2) vendedor fecha o lead antigo (reseta a sessão)
+    db = SessionLocal()
+    old_lead = db.query(Lead).filter(Lead.id == old_lead_id).first()
+    set_lead_status(db, old_lead, "perdido")
+    db.close()
+
+    # 3) cliente escreve de novo -> silenciado, cria lead novo automaticamente (cortesia)
+    with patch.object(main, "get_ai_response") as mock_ai2, \
+         patch.object(main, "send_message", new=AsyncMock()), \
+         patch.object(main, "set_typing", new=AsyncMock()):
+        client = TestClient(main.app)
+        client.post("/webhook/whatsapp", json=payload)
+        time.sleep(0.3)
+        mock_ai2.assert_not_called()
+
+    db = SessionLocal()
+    new_lead = (
+        db.query(Lead)
+        .filter(Lead.dealership_id == dealership_id, Lead.phone_number == phone, Lead.status == "novo")
+        .first()
+    )
+    assert new_lead is not None
+    new_lead_id = new_lead.id
+    db.close()
+
+    # 4) próxima mensagem já processa normal no lead novo
+    with patch.object(main, "get_ai_response") as mock_ai3, \
+         patch.object(main, "send_message", new=AsyncMock()), \
+         patch.object(main, "set_typing", new=AsyncMock()):
+        mock_ai3.return_value = ("resposta pro lead novo", None, None)
+        client = TestClient(main.app)
+        client.post("/webhook/whatsapp", json=payload)
+        time.sleep(0.3)
+
+    db = SessionLocal()
+    old_history = get_conversation_history_for_lead(db, old_lead_id)
+    new_history = get_conversation_history_for_lead(db, new_lead_id)
+    db.close()
+
+    assert old_lead_id != new_lead_id
+    assert len(old_history) >= 1
+    assert len(new_history) >= 1
+    assert all("resposta pro lead novo" not in c.messages_json for c in old_history)
+    assert all("resposta pro lead antigo" not in c.messages_json for c in new_history)
+
+
+def test_stale_conversation_expires_and_creates_new_session_for_same_lead():
+    """Cenário diferente do reengajamento pós-fechamento: um lead "agendado" (nunca fechado
+    manualmente) fica sem interação por mais de 24h — ao voltar, o bot NÃO silencia (status não é
+    terminal), mas a sessão antiga expira e uma conversa nova é criada, ligada ao MESMO lead
+    (não cria lead novo, porque ninguém fechou esse lead de verdade)."""
+    import time
+    from datetime import datetime, timedelta
+
+    from fastapi.testclient import TestClient
+    import main
+    from database import Conversation, get_conversation_history_for_lead, get_default_dealership
+
+    db = SessionLocal()
+    dealership = get_default_dealership(db) or _make_dealership(db, "Loja Expiracao")
+    dealership_id = dealership.id
+    phone = "5544900000111@c.us"
+    lead = Lead(dealership_id=dealership_id, phone_number=phone, status="agendado")
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    lead_id = lead.id
+
+    # simula uma sessão antiga (mês passado) já ligada a esse lead
+    old_conv = Conversation(
+        phone_number=phone,
+        lead_id=lead_id,
+        status="active",
+        messages_json='[{"role": "user", "content": "quero agendar"}]',
+        created_at=datetime.utcnow() - timedelta(days=30),
+        updated_at=datetime.utcnow() - timedelta(days=30),
+    )
+    db.add(old_conv)
+    db.commit()
+    old_conv_id = old_conv.id
+    db.close()
+
+    payload = {
+        "event": "message",
+        "payload": {
+            "fromMe": False,
+            "from": phone,
+            "hasMedia": False,
+            "body": "oi, ainda quero saber sobre esse carro",
+            "_data": {"notifyName": "Cliente Antigo Agendado"},
+        },
+    }
+
+    with patch.object(main, "get_ai_response") as mock_ai, \
+         patch.object(main, "send_message", new=AsyncMock()), \
+         patch.object(main, "set_typing", new=AsyncMock()):
+        mock_ai.return_value = ("resposta depois de um mês", None, None)
+        client = TestClient(main.app)
+        resp = client.post("/webhook/whatsapp", json=payload)
+        assert resp.status_code == 200
+        time.sleep(0.3)
+        mock_ai.assert_called_once()  # não foi silenciado — "agendado" não é status fechado
+
+    db = SessionLocal()
+    old_conv = db.query(Conversation).filter(Conversation.id == old_conv_id).first()
+    assert old_conv.status == "expired"  # sessão antiga foi marcada como expirada
+
+    # não deve ter criado um lead novo — só um lead esperado (o mesmo de sempre)
+    leads = db.query(Lead).filter(Lead.dealership_id == dealership_id, Lead.phone_number == phone).all()
+    assert len(leads) == 1
+    assert leads[0].id == lead_id
+
+    historico_conversas = get_conversation_history_for_lead(db, lead_id)
+    assert len(historico_conversas) == 2  # a antiga (expirada) + a nova sessão
+    db.close()
