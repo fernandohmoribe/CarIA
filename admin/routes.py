@@ -8,12 +8,15 @@ from fastapi.templating import Jinja2Templates
 
 from admin.auth import check_credentials, require_login
 from database import (
+    LEAD_STATUS_LABELS,
+    MANUAL_LEAD_STATUSES,
     SessionLocal,
     get_all_leads,
     get_available_vehicles,
     get_conversation_history,
     get_default_dealership,
     get_lead_by_id,
+    set_lead_status,
 )
 from dealership_config import to_local
 
@@ -101,15 +104,7 @@ async def dashboard(request: Request):
         status_counts = Counter(lead.status for lead in leads)
         funil = [
             {"status": s, "label": label, "count": status_counts.get(s, 0)}
-            for s, label in [
-                ("novo", "Novo"),
-                ("qualificado", "Qualificado"),
-                ("agendado", "Agendado"),
-                ("transferido", "Transferido"),
-                ("contatado", "Contatado"),
-                ("convertido", "Convertido"),
-                ("perdido", "Perdido"),
-            ]
+            for s, label in LEAD_STATUS_LABELS.items()
         ]
 
         veiculo_counts = Counter(lead.veiculo_interesse for lead in leads if lead.veiculo_interesse)
@@ -193,10 +188,37 @@ async def lead_detail_page(request: Request, lead_id: int):
             conversas.append({"status": conv.status, "created_at": conv.created_at, "mensagens": mensagens})
 
         return templates.TemplateResponse(
-            "lead_detail.html", {"request": request, "lead": lead, "conversas": conversas}
+            "lead_detail.html",
+            {
+                "request": request,
+                "lead": lead,
+                "conversas": conversas,
+                "manual_statuses": MANUAL_LEAD_STATUSES,
+                "status_labels": LEAD_STATUS_LABELS,
+            },
         )
     finally:
         db.close()
+
+
+@router.post("/leads/{lead_id}/status")
+async def update_lead_status(request: Request, lead_id: int, status: str = Form(...)):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    if status not in MANUAL_LEAD_STATUSES:
+        return RedirectResponse(url=f"/admin/leads/{lead_id}", status_code=302)
+
+    db = SessionLocal()
+    try:
+        lead = get_lead_by_id(db, lead_id)
+        if lead:
+            set_lead_status(db, lead, status)
+    finally:
+        db.close()
+
+    return RedirectResponse(url=f"/admin/leads/{lead_id}", status_code=302)
 
 
 @router.get("/sync")

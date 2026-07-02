@@ -119,7 +119,22 @@ class Conversation(Base):
 
 
 # ── Leads ────────────────────────────────────────────────────────────────
-# Status possíveis: novo | qualificado | agendado | transferido | contatado | convertido | perdido
+# novo e qualificado são calculados pela IA a partir da conversa — não entram no controle manual.
+# Os outros 5 dependem de uma ação humana (vendedor ligou, fechou venda, etc) e ficam editáveis
+# no painel admin. convertido/perdido são terminais: encerram a sessão e o bot para de responder
+# esse telefone (ver TERMINAL_LEAD_STATUSES em main.py).
+LEAD_STATUS_LABELS = {
+    "novo": "Novo",
+    "qualificado": "Qualificado",
+    "agendado": "Agendado",
+    "transferido": "Transferido",
+    "contatado": "Contatado",
+    "convertido": "Convertido",
+    "perdido": "Perdido",
+}
+MANUAL_LEAD_STATUSES = ["agendado", "transferido", "contatado", "convertido", "perdido"]
+TERMINAL_LEAD_STATUSES = {"convertido", "perdido"}
+
 # Prioridade: normal | quente
 class Lead(Base):
     __tablename__ = "leads"
@@ -368,6 +383,44 @@ def get_all_leads(db, dealership_id: int | None = None) -> list[Lead]:
 
 def get_lead_by_id(db, lead_id: int) -> Lead | None:
     return db.query(Lead).filter(Lead.id == lead_id).first()
+
+
+def get_latest_lead_status(db, dealership_id: int, phone_number: str) -> str | None:
+    lead = (
+        db.query(Lead)
+        .filter(Lead.dealership_id == dealership_id, Lead.phone_number == phone_number)
+        .order_by(Lead.created_at.desc())
+        .first()
+    )
+    return lead.status if lead else None
+
+
+def set_lead_status(db, lead: Lead, status: str) -> Lead:
+    """Atualiza o status do lead. Se for terminal (convertido/perdido), também encerra a
+    sessão de conversa ativa — o atendimento por IA para nesse telefone (ver TERMINAL_LEAD_STATUSES
+    em main.py, que decide se responde ou não a próxima mensagem)."""
+    lead.status = status
+    lead.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(lead)
+    if status in TERMINAL_LEAD_STATUSES:
+        close_conversation(db, lead.phone_number, status)
+    return lead
+
+
+def create_lead_after_closure(db, dealership_id: int, phone_number: str, previous_status: str) -> Lead:
+    """Cria um lead novo (status "novo") quando um cliente cujo lead anterior estava
+    encerrado (convertido/perdido) volta a mandar mensagem — pra alguém da loja revisar
+    manualmente por que ele voltou, em vez de reabrir o lead antigo já fechado."""
+    lead = Lead(
+        dealership_id=dealership_id,
+        phone_number=phone_number,
+        observacoes=f'Cliente retomou contato — lead anterior estava marcado como "{previous_status}". Revisar manualmente.',
+    )
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    return lead
 
 
 def lead_to_dict(lead: Lead) -> dict:

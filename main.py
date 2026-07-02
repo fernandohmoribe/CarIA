@@ -17,7 +17,18 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from claude_agent import get_ai_response
-from database import SessionLocal, get_conversation, get_conversation_updated_at, close_conversation, save_conversation
+from database import (
+    TERMINAL_LEAD_STATUSES,
+    SessionLocal,
+    close_conversation,
+    create_lead_after_closure,
+    get_conversation,
+    get_conversation_updated_at,
+    get_default_dealership,
+    get_latest_lead_status,
+    lead_to_dict,
+    save_conversation,
+)
 from dealership_config import (
     DEALERSHIP_NAME,
     DEALERSHIP_PHONE,
@@ -60,6 +71,11 @@ MAX_TURNS = 20
 CONVERSATION_EXPIRY_HOURS = 24
 
 RESET_COMMANDS = {"reiniciar", "recomeçar", "cancelar", "/start", "reset", "começar"}
+
+CLOSED_LEAD_MESSAGE = (
+    "Esse atendimento já foi concluído com nosso time 😊 Vou avisar um vendedor que você "
+    "entrou em contato de novo — ele já vai te retornar!"
+)
 
 _timestamps: dict[str, deque] = defaultdict(lambda: deque())
 _blocked: dict[str, float] = {}
@@ -182,6 +198,22 @@ async def notify_staff(lead: dict, phone: str) -> None:
         logger.warning(f"Não foi possível notificar o vendedor: {e}")
 
 
+async def handle_closed_lead_contact(phone: str, dealership_id: int, previous_status: str) -> None:
+    """Cliente cujo lead mais recente está encerrado (convertido/perdido) mandou mensagem de
+    novo. O bot não reengaja sozinho — manda só uma cortesia e cria um lead novo pra um vendedor
+    revisar manualmente. Da mensagem seguinte em diante, o bot já responde normal nesse lead novo."""
+    db = SessionLocal()
+    try:
+        lead = create_lead_after_closure(db, dealership_id, phone, previous_status)
+        lead_dict = lead_to_dict(lead)
+    finally:
+        db.close()
+
+    logger.info(f"[REENGAJAMENTO] {phone} voltou após lead {previous_status} — novo lead #{lead.id}")
+    await send_message(phone, CLOSED_LEAD_MESSAGE)
+    await notify_staff(lead_dict, phone)
+
+
 # ---------------------------------------------------------------------------
 # Core message processing
 # ---------------------------------------------------------------------------
@@ -283,6 +315,18 @@ async def webhook(request: Request):
         return JSONResponse({"status": "ok"})
 
     push_name = payload.get("_data", {}).get("notifyName", "") or phone
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        dealership_id = dealership.id if dealership else None
+        lead_status = get_latest_lead_status(db, dealership_id, phone) if dealership_id else None
+    finally:
+        db.close()
+
+    if lead_status in TERMINAL_LEAD_STATUSES:
+        asyncio.create_task(handle_closed_lead_contact(phone, dealership_id, lead_status))
+        return JSONResponse({"status": "ok"})
 
     if text.lower().strip() in RESET_COMMANDS:
         db = SessionLocal()

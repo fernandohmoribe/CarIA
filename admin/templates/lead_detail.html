@@ -10,11 +10,19 @@
         <p class="text-zinc-500 text-sm mt-1">{{ lead.telefone or lead.phone_number }}</p>
         {% if lead.email %}<p class="text-zinc-500 text-sm">{{ lead.email }}</p>{% endif %}
     </div>
-    <div class="flex gap-2">
+    <div class="flex items-center gap-2">
         {% if lead.prioridade == "quente" %}
         <span class="text-xs px-3 py-1.5 rounded-full bg-orange-950 text-orange-400">🔥 quente</span>
         {% endif %}
-        <span class="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">{{ lead.status }}</span>
+        <span class="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">{{ status_labels.get(lead.status, lead.status) }}</span>
+        <form method="post" action="/admin/leads/{{ lead.id }}/status" class="flex items-center gap-2">
+            <select name="status" class="bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-2 py-1.5">
+                {% for s in manual_statuses %}
+                <option value="{{ s }}" {{ "selected" if s == lead.status else "" }}>{{ status_labels[s] }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="text-xs px-3 py-1.5 rounded-full bg-amber-450 text-black font-medium hover:opacity-90">Mudar status</button>
+        </form>
     </div>
 </div>
 

@@ -1,0 +1,16 @@
+"""
+Configura um banco SQLite isolado (arquivo temporário) antes de qualquer módulo do
+projeto ser importado — precisa rodar antes, porque database.py cria o engine no
+import, a partir de DATABASE_URL.
+"""
+
+import os
+import tempfile
+
+_tmp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_tmp_db.close()
+os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db.name}"
+os.environ["TEST_PHONES"] = ""  # não deixa a whitelist do .env real (produção) vazar pro teste
+os.environ.setdefault("ADMIN_USERNAME", "admin")
+os.environ.setdefault("ADMIN_PASSWORD", "test-password")
+os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-placeholder")
