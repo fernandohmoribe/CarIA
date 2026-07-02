@@ -4,9 +4,7 @@ import asyncio
 import base64
 import logging
 import os
-import time
-from collections import defaultdict, deque
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -16,6 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+import rate_limit as _rate_limit
 from claude_agent import get_ai_response
 from database import (
     CLOSED_LEAD_STATUSES,
@@ -52,7 +51,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title=f"{DEALERSHIP_NAME} — WhatsApp Bot")
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY", "dev-secret-change-me"))
+
+SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY")
+if not SESSION_SECRET_KEY:
+    raise RuntimeError(
+        "SESSION_SECRET_KEY não configurada no .env — defina uma chave aleatória antes de "
+        "rodar. Sem isso, as sessões do painel admin ficariam assinadas com um valor padrão "
+        "público (visível no código-fonte), permitindo forjar login."
+    )
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY)
 
 MEDIA_ROOT = Path(__file__).parent / "media"
 os.makedirs("media", exist_ok=True)
@@ -79,25 +86,11 @@ CLOSED_LEAD_MESSAGE = (
     "entrou em contato de novo — ele já vai te retornar!"
 )
 
-_timestamps: dict[str, deque] = defaultdict(lambda: deque())
-_blocked: dict[str, float] = {}
-
-
 def is_rate_limited(phone: str) -> bool:
-    now = time.time()
-    if phone in _blocked:
-        if now < _blocked[phone]:
-            return True
-        del _blocked[phone]
-    dq = _timestamps[phone]
-    while dq and now - dq[0] > RATE_LIMIT_WINDOW:
-        dq.popleft()
-    dq.append(now)
-    if len(dq) > RATE_LIMIT_MAX:
-        _blocked[phone] = now + RATE_LIMIT_BLOCK
+    limited = _rate_limit.is_rate_limited(phone, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, RATE_LIMIT_BLOCK)
+    if limited:
         logger.warning(f"[ABUSO] {phone} bloqueado por {RATE_LIMIT_BLOCK}s (rate limit)")
-        return True
-    return False
+    return limited
 
 
 # ---------------------------------------------------------------------------

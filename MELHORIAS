@@ -1,7 +1,3 @@
-- Como eu faria para parar de mandar mensagem automtica?
-Depois de agendado o robo nao responde mais?
-O que voce me sugere?
-
 
 
 - Preciso fazer perfis
@@ -17,11 +13,16 @@ Contatado 0
 Convertido 0
 Perdido 0
 
-- Quando o bot vai parar de responder?
-Se tiver um lead agendado, qualificado, contatado para de responder.
-Tem como um operador marcar para o bot parar de responder?
 
 
 
-lead_historico
-id, id_lead, id_usuario, status_anterior, status_novo, observaocao, data
+
+
+lgpd
+
+ausencia de late limit
+ausencia de cors configurado
+dados sensiveis dos usuarios
+jwt token, enviar via heards
+invalidar o logout
+sql injection

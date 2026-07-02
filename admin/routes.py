@@ -6,6 +6,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+import rate_limit as _rate_limit
 from admin.auth import check_credentials, require_login
 from database import (
     LEAD_STATUS_LABELS,
@@ -24,6 +25,10 @@ from dealership_config import to_local
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+LOGIN_RATE_LIMIT_MAX = 5
+LOGIN_RATE_LIMIT_WINDOW = 60
+LOGIN_RATE_LIMIT_BLOCK = 300
 
 
 def _local_time(dt, fmt: str = "%d/%m/%Y %H:%M", default: str = "—") -> str:
@@ -77,6 +82,18 @@ async def login_form(request: Request):
 
 @router.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+    client_ip = request.client.host if request.client else "unknown"
+    # IP + username juntos: limita força bruta por IP sem deixar um usuário legítimo (ex: vários
+    # logins de teste na mesma sessão) esbarrar no limite de tentativas de outro usuário.
+    if _rate_limit.is_rate_limited(
+        f"admin_login:{client_ip}:{username}", LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW, LOGIN_RATE_LIMIT_BLOCK
+    ):
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": "Muitas tentativas de login. Tente novamente em alguns minutos."},
+            status_code=429,
+        )
+
     if check_credentials(username, password):
         request.session["logged_in"] = True
         request.session["username"] = username
