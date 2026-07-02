@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div class="min-h-[70vh] flex items-center justify-center">
+    <div class="w-full max-w-sm bg-[#111113] border border-zinc-800 rounded-2xl p-8 shadow-xl">
+        <div class="text-center mb-8">
+            <div class="text-3xl mb-2">🚘</div>
+            <h1 class="text-xl font-semibold text-amber-450">CarIA</h1>
+            <p class="text-zinc-500 text-sm mt-1">Painel administrativo</p>
+        </div>
+
+        {% if error %}
+        <div class="bg-red-950 border border-red-800 text-red-300 text-sm rounded-lg px-4 py-2 mb-4">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="post" action="/admin/login" class="space-y-4">
+            <div>
+                <label class="block text-xs text-zinc-400 mb-1">Usuário</label>
+                <input name="username" type="text" required autofocus
+                       class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-450">
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-400 mb-1">Senha</label>
+                <input name="password" type="password" required
+                       class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-450">
+            </div>
+            <button type="submit"
+                    class="w-full bg-amber-450 text-black font-medium rounded-lg py-2 text-sm hover:brightness-110 transition">
+                Entrar
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

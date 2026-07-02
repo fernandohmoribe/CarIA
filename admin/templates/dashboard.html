@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold text-zinc-100 mb-1">Dashboard</h1>
+<p class="text-zinc-500 text-sm mb-8">{{ dealership.nome if dealership else "—" }}</p>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6">
+        <div class="text-zinc-500 text-xs uppercase tracking-wide mb-2">Total de leads</div>
+        <div class="text-3xl font-semibold text-amber-450">{{ total_leads }}</div>
+    </div>
+    <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6">
+        <div class="text-zinc-500 text-xs uppercase tracking-wide mb-2">Veículos no estoque</div>
+        <div class="text-3xl font-semibold text-emerald-400">{{ total_vehicles }}</div>
+    </div>
+    <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6">
+        <div class="text-zinc-500 text-xs uppercase tracking-wide mb-2">Leads quentes 🔥</div>
+        <div class="text-3xl font-semibold text-orange-400">{{ quentes|length }}</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-sm font-semibold text-zinc-300 mb-4">Funil de leads</h2>
+        <div class="space-y-3">
+            {% set max_count = (funil|map(attribute='count')|max) or 1 %}
+            {% for f in funil %}
+            <div>
+                <div class="flex justify-between text-xs text-zinc-400 mb-1">
+                    <span>{{ f.label }}</span>
+                    <span>{{ f.count }}</span>
+                </div>
+                <div class="w-full bg-zinc-900 rounded-full h-2">
+                    <div class="bg-amber-450 h-2 rounded-full" style="width: {{ (f.count / max_count * 100) if max_count else 0 }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-sm font-semibold text-zinc-300 mb-4">Veículos mais procurados</h2>
+        {% if top_veiculos %}
+        <div class="space-y-2">
+            {% for nome, count in top_veiculos %}
+            <div class="flex justify-between text-sm border-b border-zinc-900 pb-2">
+                <span class="text-zinc-300">{{ nome }}</span>
+                <span class="text-zinc-500">{{ count }} lead{{ 's' if count != 1 else '' }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-zinc-600 text-sm">Ainda sem dados suficientes.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if quentes %}
+<div class="mt-8 bg-[#1a1410] border border-orange-900 rounded-2xl p-6">
+    <h2 class="text-sm font-semibold text-orange-400 mb-4">🔥 Leads quentes — priorizar contato</h2>
+    <div class="space-y-2">
+        {% for lead in quentes %}
+        <a href="/admin/leads/{{ lead.id }}" class="flex justify-between items-center bg-[#111113] rounded-lg px-4 py-3 hover:bg-zinc-900 transition">
+            <div>
+                <div class="text-sm text-zinc-200">{{ lead.nome or "Sem nome" }}</div>
+                <div class="text-xs text-zinc-500">{{ lead.veiculo_interesse or "—" }}</div>
+            </div>
+            <span class="text-xs text-zinc-500">{{ lead.telefone or lead.phone_number }}</span>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

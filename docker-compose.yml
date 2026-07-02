@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  waha:
+    image: devlikeapro/waha
+    container_name: waha
+    restart: unless-stopped
+    ports:
+      - "8080:3000"
+    env_file:
+      - .env
+    environment:
+      - WHATSAPP_HOOK_URL=http://host.docker.internal:3000/webhook/whatsapp
+      - WHATSAPP_HOOK_EVENTS=message
+      - WAHA_PRINT_QR=true
+      - WAHA_LOG_LEVEL=info
+      - WAHA_DASHBOARD_USERNAME=admin
+    volumes:
+      - waha_data:/app/.sessions
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  waha_data:

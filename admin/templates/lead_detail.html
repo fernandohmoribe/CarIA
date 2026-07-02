@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Lead #{{ lead.id }}{% endblock %}
+{% block content %}
+
+<a href="/admin/leads" class="text-zinc-500 text-sm hover:text-zinc-300">← Voltar pra leads</a>
+
+<div class="flex items-start justify-between mt-4 mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold text-zinc-100">{{ lead.nome or "Sem nome" }}</h1>
+        <p class="text-zinc-500 text-sm mt-1">{{ lead.telefone or lead.phone_number }}</p>
+    </div>
+    <div class="flex gap-2">
+        {% if lead.prioridade == "quente" %}
+        <span class="text-xs px-3 py-1.5 rounded-full bg-orange-950 text-orange-400">🔥 quente</span>
+        {% endif %}
+        <span class="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300">{{ lead.status }}</span>
+    </div>
+</div>
+
+{% if lead.resumo_executivo %}
+<div class="bg-[#1a1610] border border-amber-900/50 rounded-2xl p-5 mb-6">
+    <h2 class="text-xs uppercase tracking-wide text-amber-450 mb-2">📝 Resumo executivo</h2>
+    <p class="text-zinc-200 text-sm leading-relaxed">{{ lead.resumo_executivo }}</p>
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-5">
+        <h2 class="text-sm font-semibold text-zinc-300 mb-3">Interesse</h2>
+        <dl class="space-y-2 text-sm">
+            <div class="flex justify-between"><dt class="text-zinc-500">Veículo</dt><dd class="text-zinc-200">{{ lead.veiculo_interesse or "—" }}</dd></div>
+            <div class="flex justify-between"><dt class="text-zinc-500">Slug</dt><dd class="text-zinc-400 text-xs">{{ lead.veiculo_slug or "—" }}</dd></div>
+            <div class="flex justify-between"><dt class="text-zinc-500">Preferência de contato</dt><dd class="text-zinc-200">{{ lead.preferencia_contato or "—" }}</dd></div>
+            <div class="flex justify-between"><dt class="text-zinc-500">Como conheceu</dt><dd class="text-zinc-200">{{ lead.como_conheceu or "—" }}</dd></div>
+        </dl>
+    </div>
+    <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-5">
+        <h2 class="text-sm font-semibold text-zinc-300 mb-3">Qualificação</h2>
+        <dl class="space-y-2 text-sm">
+            <div class="flex justify-between"><dt class="text-zinc-500">Forma de pagamento</dt><dd class="text-zinc-200">{{ lead.forma_pagamento or "—" }}</dd></div>
+            <div class="flex justify-between"><dt class="text-zinc-500">Tem troca</dt><dd class="text-zinc-200">{{ "Sim — " ~ (lead.veiculo_troca_desc or "") if lead.tem_troca else ("Não" if lead.tem_troca == False else "—") }}</dd></div>
+            <div class="flex justify-between"><dt class="text-zinc-500">Orçamento</dt><dd class="text-zinc-200">{{ lead.orcamento_aproximado or "—" }}</dd></div>
+            <div class="flex justify-between"><dt class="text-zinc-500">Urgência</dt><dd class="text-zinc-200">{{ lead.urgencia_compra or "—" }}</dd></div>
+            <div class="flex justify-between"><dt class="text-zinc-500">Uso pretendido</dt><dd class="text-zinc-200">{{ lead.uso_pretendido or "—" }}</dd></div>
+        </dl>
+    </div>
+</div>
+
+{% if lead.observacoes %}
+<div class="bg-[#111113] border border-zinc-800 rounded-2xl p-5 mb-8">
+    <h2 class="text-sm font-semibold text-zinc-300 mb-2">Observações</h2>
+    <p class="text-zinc-400 text-sm">{{ lead.observacoes }}</p>
+</div>
+{% endif %}
+
+<h2 class="text-sm font-semibold text-zinc-300 mb-3">💬 Histórico de conversa com o bot</h2>
+<div class="space-y-6">
+    {% for conv in conversas %}
+    <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-5">
+        <div class="text-xs text-zinc-500 mb-3">Sessão {{ conv.created_at.strftime("%d/%m/%Y %H:%M") if conv.created_at else "" }} — status: {{ conv.status }}</div>
+        <div class="space-y-3">
+            {% for msg in conv.mensagens %}
+            <div class="flex {{ 'justify-end' if msg.role == 'user' else 'justify-start' }}">
+                <div class="max-w-[75%] rounded-xl px-3 py-2 text-sm {{ 'bg-amber-450 text-black' if msg.role == 'user' else 'bg-zinc-800 text-zinc-200' }}">
+                    {{ msg.content }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <p class="text-zinc-600 text-sm">Sem histórico de conversa.</p>
+    {% endfor %}
+</div>
+{% endblock %}

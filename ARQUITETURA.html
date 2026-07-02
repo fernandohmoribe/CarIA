@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arquitetura — CarIA (Atendente de Veículos)</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            padding: 40px;
+            max-width: 1150px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+            padding-bottom: 30px;
+            border-bottom: 3px solid #e2e8f0;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 16px;
+            color: #64748b;
+        }
+
+        .status-badge {
+            display: inline-block;
+            margin-top: 14px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            background: #fef9c3;
+            color: #854d0e;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid #fde047;
+        }
+
+        .section-title {
+            font-size: 22px;
+            font-weight: 600;
+            color: #0f172a;
+            margin: 40px 0 24px 0;
+            padding-left: 16px;
+            border-left: 4px solid #2563eb;
+        }
+
+        .section-note {
+            font-size: 13px;
+            color: #64748b;
+            margin: -14px 0 20px 20px;
+            font-style: italic;
+        }
+
+        .subsection-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+            margin: 28px 0 14px 4px;
+        }
+
+        /* ── Premissas ─────────────────────────────────── */
+        .premises {
+            background: white;
+            border-radius: 12px;
+            padding: 6px 24px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+        .premise {
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            padding: 16px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .premise:last-child { border-bottom: none; }
+        .premise .num {
+            background: #2563eb;
+            color: white;
+            width: 26px;
+            height: 26px;
+            min-width: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .premise .txt { font-size: 13.5px; color: #334155; line-height: 1.6; }
+        .premise .txt b { color: #0f172a; }
+
+        /* ── Diagrama principal ────────────────────────── */
+        .architecture {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 30px 0;
+        }
+
+        .component {
+            border-radius: 14px;
+            padding: 20px 24px;
+            text-align: center;
+            min-width: 150px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            position: relative;
+        }
+
+        .component .icon { font-size: 32px; margin-bottom: 8px; }
+        .component .name { font-weight: 600; font-size: 14px; }
+        .component .desc { font-size: 11px; color: #64748b; margin-top: 4px; }
+        .component .tech { font-size: 10px; color: #94a3b8; margin-top: 6px; font-style: italic; }
+
+        .c-client    { background: #f0fdf4; border: 2px solid #86efac; }
+        .c-whatsapp  { background: #f0fdf4; border: 2px solid #22c55e; }
+        .c-waha      { background: #eff6ff; border: 2px solid #60a5fa; }
+        .c-main      { background: #fef3c7; border: 2px solid #f59e0b; }
+        .c-agent     { background: #fae8ff; border: 2px solid #c084fc; }
+        .c-claude    { background: #fce7f3; border: 2px solid #f472b6; }
+        .c-config    { background: #fff7ed; border: 2px solid #fb923c; }
+        .c-db        { background: #f0f9ff; border: 2px solid #38bdf8; }
+        .c-inventory { background: #ecfeff; border: 2px solid #22d3ee; }
+        .c-supabase  { background: #eef2ff; border: 2px dashed #818cf8; }
+        .c-connector { background: #f5f3ff; border: 2px solid #a78bfa; }
+        .c-sync      { background: #fdf2f8; border: 2px solid #f472b6; }
+        .c-localdb   { background: #ecfdf5; border: 3px solid #10b981; }
+
+        .external-tag {
+            position: absolute;
+            top: -10px;
+            right: -8px;
+            background: #4f46e5;
+            color: white;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 8px;
+        }
+
+        .core-tag {
+            position: absolute;
+            top: -10px;
+            right: -8px;
+            background: #059669;
+            color: white;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 8px;
+        }
+
+        .arrow {
+            font-size: 24px;
+            color: #94a3b8;
+            font-weight: 300;
+        }
+
+        .arrow-down {
+            text-align: center;
+            font-size: 24px;
+            color: #94a3b8;
+            margin: 8px 0;
+        }
+
+        .phase-label {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+        }
+        .phase-sync { background: #fce7f3; color: #9d174d; }
+        .phase-runtime { background: #dbeafe; color: #1e40af; }
+
+        .diagram-block {
+            background: white;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            margin-bottom: 20px;
+        }
+
+        /* ── Camada inferior ──────────────────────────── */
+        .bottom-layer {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ── Fluxo de sequência ───────────────────────── */
+        .flow {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            margin: 20px 0;
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .flow-step:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+        .step-number {
+            background: #2563eb;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .step-number.tool { background: #22d3ee; }
+        .step-number.lead { background: #10b981; }
+
+        .step-content { flex: 1; }
+        .step-content .who {
+            font-weight: 600;
+            font-size: 14px;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+        .step-content .what {
+            font-size: 13px;
+            color: #475569;
+            line-height: 1.5;
+        }
+        .step-content .file {
+            display: inline-block;
+            background: #f1f5f9;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: monospace;
+            color: #475569;
+            margin-top: 4px;
+        }
+        .step-content .rule {
+            display: inline-block;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-top: 6px;
+            font-weight: 600;
+        }
+
+        /* ── Tool use box ────────────────────────────── */
+        .tool-box {
+            background: #f0fdff;
+            border: 1px dashed #22d3ee;
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-top: 20px;
+        }
+        .tool-box .title {
+            font-weight: 600;
+            font-size: 13px;
+            color: #0e7490;
+            margin-bottom: 8px;
+        }
+        .tool-item {
+            font-family: monospace;
+            font-size: 12px;
+            background: white;
+            border: 1px solid #cffafe;
+            border-radius: 6px;
+            padding: 6px 10px;
+            margin-bottom: 6px;
+            color: #164e63;
+        }
+        .tool-item:last-child { margin-bottom: 0; }
+        .tool-item .ret { color: #64748b; }
+
+        /* ── Tabela de arquivos ───────────────────────── */
+        .file-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+
+        .file-table thead th {
+            background: #1e293b;
+            color: white;
+            padding: 14px 20px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .file-table tbody td {
+            padding: 12px 20px;
+            font-size: 13px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: top;
+        }
+
+        .file-table tbody tr:last-child td { border-bottom: none; }
+        .file-table tbody tr:hover { background: #f8fafc; }
+
+        .file-name {
+            font-family: monospace;
+            font-weight: 600;
+            color: #0f172a;
+            white-space: nowrap;
+        }
+
+        .file-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .badge-core   { background: #fef3c7; color: #92400e; }
+        .badge-new    { background: #dcfce7; color: #166534; }
+        .badge-changed{ background: #dbeafe; color: #1e40af; }
+        .badge-same   { background: #f1f5f9; color: #475569; }
+        .badge-config { background: #f0fdf4; color: #166534; }
+
+        /* ── Cards de decisão ─────────────────────────── */
+        .decisions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .decision-card {
+            background: white;
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border-top: 3px solid #2563eb;
+        }
+        .decision-card.highlight { border-top: 3px solid #10b981; }
+        .decision-card .q {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .decision-card .a {
+            font-size: 14px;
+            color: #0f172a;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .decision-card .why {
+            font-size: 12px;
+            color: #475569;
+            line-height: 1.5;
+        }
+
+        /* ── Schema ────────────────────────────────────  */
+        .schema-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+        .schema-box {
+            background: #0f172a;
+            color: #e2e8f0;
+            border-radius: 12px;
+            padding: 22px 24px;
+            font-family: 'Courier New', monospace;
+            font-size: 12.5px;
+            line-height: 1.7;
+            overflow-x: auto;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+        }
+        .schema-box .kw { color: #60a5fa; }
+        .schema-box .tp { color: #4ade80; }
+        .schema-box .cm { color: #64748b; font-style: italic; }
+        .schema-box .field { color: #fbbf24; }
+        .schema-box .tenant { color: #f472b6; }
+
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #e2e8f0;
+            color: #94a3b8;
+            font-size: 12px;
+        }
+
+        @media print {
+            body { padding: 20px; }
+            .flow, .file-table { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🚘 CarIA — Atendente de Veículos</h1>
+        <p>Robô com IA para atender clientes de loja de veículos via WhatsApp — hoje para a Company Imports, pensado para ser vendido a outras lojas</p>
+        <div class="status-badge">📐 Documento de arquitetura — nada implementado ainda</div>
+    </div>
+
+    <!-- ── PREMISSAS ───────────────────────────────── -->
+    <div class="section-title">Premissas do produto</div>
+
+    <div class="premises">
+        <div class="premise">
+            <div class="num">1</div>
+            <div class="txt">Base de dados <b>própria</b> com carros e imagens. Os dados vêm de algum lugar (hoje: Supabase da Company Imports), mas passam a viver no <b>nosso banco</b> — nesta fase, <b>SQLite</b>.</div>
+        </div>
+        <div class="premise">
+            <div class="num">2</div>
+            <div class="txt">Implementação de agora é <b>específica para a Company Imports</b>, mas o desenho deve deixar <b>genérico o que der</b> — o plano é vender para outras lojas de carro no futuro.</div>
+        </div>
+        <div class="premise">
+            <div class="num">3</div>
+            <div class="txt">Cliente entra em contato dizendo que tem interesse em um carro → <b>capturamos os dados dele para cadastrar o Lead já nesse momento</b>, não só no fim da conversa.</div>
+        </div>
+        <div class="premise">
+            <div class="num">4</div>
+            <div class="txt">Depois, perguntamos se ele tem dúvidas sobre o carro. Respondemos com educação e <b>SEMPRE, SEMPRE olhando só a nossa base de dados — nunca buscando informação de fora</b>.</div>
+        </div>
+        <div class="premise">
+            <div class="num">5</div>
+            <div class="txt">Se não tiver mais dúvidas, o objetivo é <b>agendar uma visita à loja ou um test-drive</b>.</div>
+        </div>
+        <div class="premise">
+            <div class="num">6</div>
+            <div class="txt">Objetivo paralelo: <b>facilitar a vida do vendedor</b>, entregando o máximo de informação possível sobre o cliente, com o vocabulário do mundo automotivo (troca, financiamento, urgência, uso pretendido).</div>
+        </div>
+    </div>
+
+    <!-- ── DECISÕES ────────────────────────────────── -->
+    <div class="section-title">Decisões de arquitetura</div>
+
+    <div class="decisions">
+        <div class="decision-card highlight">
+            <div class="q">Onde mora o estoque durante o atendimento</div>
+            <div class="a">Banco próprio (SQLite), sincronizado</div>
+            <div class="why">O bot NUNCA consulta o Supabase da loja ao vivo durante a conversa. Um job de sincronização importa vehicles + imagens pro nosso banco. Isso desacopla o atendimento da disponibilidade do sistema da loja e é a base pra multi-loja.</div>
+        </div>
+        <div class="decision-card highlight">
+            <div class="q">Genericidade / multi-loja</div>
+            <div class="a">Conectores plugáveis por loja</div>
+            <div class="why">Toda a lógica de conversa, tools e lead é genérica. Só o "conector de sincronização" é específico por loja — hoje um `SupabaseConnector` para a Company Imports.</div>
+        </div>
+        <div class="decision-card highlight">
+            <div class="q">Ciclo de vida do Lead</div>
+            <div class="a">Criado cedo, enriquecido aos poucos</div>
+            <div class="why">Assim que o cliente demonstra interesse e dá nome/telefone, o Lead já existe no banco (status "novo"). Qualificação e agendamento vão sendo adicionados ao mesmo registro conforme a conversa avança — nunca perdemos um lead que abandona no meio.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Grounding das respostas sobre o carro</div>
+            <div class="a">Só a base local, nunca conhecimento externo</div>
+            <div class="why">O Claude não tem tool de busca na internet nem usa conhecimento genérico sobre carros. Toda informação de veículo vem de tools que leem exclusivamente o nosso banco. Se não tem o dado, admite e oferece repassar ao vendedor.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Agendamento de test-drive/visita</div>
+            <div class="a">Só coletar o interesse</div>
+            <div class="why">Registra preferência de dia/período; vendedor humano confirma horário. Sem integração de calendário nesta fase.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Filtro de estoque sincronizado</div>
+            <div class="a">Disponível + Publicado</div>
+            <div class="why">A sincronização já filtra na origem: só entra no nosso banco o que está `status=Disponivel` e `publication_status=Publicado`.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Login do painel administrativo</div>
+            <div class="a">Usuário/senha único via .env</div>
+            <div class="why">Uma loja, um admin. Credenciais no .env, sessão via cookie assinado. Sem tabela de usuários nesta fase — evita complexidade de gestão de múltiplos vendedores logando.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Stack do frontend do painel</div>
+            <div class="a">Server-rendered — Jinja2 + Tailwind (CDN)</div>
+            <div class="why">Direto no FastAPI já existente, sem build step nem serviço extra. Dá pra deixar bonito e no estilo Company Imports (dark, premium) só com Tailwind, sem framework JS.</div>
+        </div>
+    </div>
+
+    <!-- ── VISÃO GERAL ─────────────────────────────── -->
+    <div class="section-title">Visão Geral — duas fases separadas</div>
+    <div class="section-note">A sincronização de estoque roda por fora do atendimento (job periódico). O atendimento em tempo real só enxerga o banco local — nunca o Supabase da loja diretamente.</div>
+
+    <div class="diagram-block">
+        <span class="phase-label phase-sync">Fase 1 — Sincronização de estoque (periódica)</span>
+        <div class="architecture">
+            <div class="component c-supabase">
+                <span class="external-tag">EXTERNO</span>
+                <div class="icon">☁️</div>
+                <div class="name">Supabase da loja</div>
+                <div class="desc">Company Imports hoje — outra loja amanhã</div>
+                <div class="tech">REST (PostgREST) · read-only</div>
+            </div>
+            <div class="arrow">───►</div>
+            <div class="component c-connector">
+                <div class="icon">🔌</div>
+                <div class="name">connectors/supabase_connector.py</div>
+                <div class="desc">Implementação específica da Company Imports</div>
+                <div class="tech">implementa VehicleSourceConnector</div>
+            </div>
+            <div class="arrow">───►</div>
+            <div class="component c-sync">
+                <div class="icon">🔄</div>
+                <div class="name">sync_inventory.py</div>
+                <div class="desc">Normaliza e grava/atualiza (upsert)</div>
+                <div class="tech">manual ou agendado (cron)</div>
+            </div>
+            <div class="arrow">───►</div>
+            <div class="component c-localdb">
+                <span class="core-tag">NOSSO</span>
+                <div class="icon">🗄️</div>
+                <div class="name">SQLite local</div>
+                <div class="desc">Vehicle · VehicleImage · Dealership</div>
+                <div class="tech">fonte da verdade durante o atendimento</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="diagram-block">
+        <span class="phase-label phase-runtime">Fase 2 — Atendimento (tempo real)</span>
+        <div class="architecture">
+            <div class="component c-client">
+                <div class="icon">📱</div>
+                <div class="name">Cliente</div>
+                <div class="desc">Celular do cliente</div>
+            </div>
+            <div class="arrow">◄───►</div>
+            <div class="component c-whatsapp">
+                <div class="icon">💬</div>
+                <div class="name">WhatsApp</div>
+                <div class="desc">Nuvem do WhatsApp</div>
+            </div>
+            <div class="arrow">◄───►</div>
+            <div class="component c-waha">
+                <div class="icon">🐳</div>
+                <div class="name">WAHA</div>
+                <div class="desc">Ponte com WhatsApp</div>
+                <div class="tech">Docker · porta 8080</div>
+            </div>
+            <div class="arrow">◄───►</div>
+            <div class="component c-main">
+                <div class="icon">⚡</div>
+                <div class="name">main.py</div>
+                <div class="desc">Servidor / Orquestrador</div>
+                <div class="tech">FastAPI · porta 3000</div>
+            </div>
+            <div class="arrow">───►</div>
+            <div class="component c-agent">
+                <div class="icon">🧠</div>
+                <div class="name">claude_agent.py</div>
+                <div class="desc">Loop de tool use</div>
+                <div class="tech">Anthropic SDK</div>
+            </div>
+        </div>
+
+        <div class="bottom-layer">
+            <div class="component c-claude">
+                <div class="icon">🤖</div>
+                <div class="name">Claude AI</div>
+                <div class="desc">Conduz a conversa e decide quando chamar as tools</div>
+                <div class="tech">Haiku 4.5 · API Anthropic</div>
+            </div>
+            <div class="component c-config">
+                <div class="icon">📋</div>
+                <div class="name">dealership_config.py</div>
+                <div class="desc">Prompt + FAQ institucional (horário, endereço, showroom)</div>
+                <div class="tech">System Prompt XML</div>
+            </div>
+            <div class="component c-inventory">
+                <div class="icon">🔎</div>
+                <div class="name">inventory.py</div>
+                <div class="desc">Tools de busca/detalhe — lê só o SQLite local</div>
+                <div class="tech">SQLAlchemy → banco local</div>
+            </div>
+            <div class="component c-localdb">
+                <span class="core-tag">NOSSO</span>
+                <div class="icon">🗄️</div>
+                <div class="name">database.py</div>
+                <div class="desc">Vehicle · VehicleImage · Conversation · Lead</div>
+                <div class="tech">SQLite · SQLAlchemy</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="diagram-block">
+        <span class="phase-label" style="background:#ede9fe; color:#5b21b6;">Fase 3 — Painel Administrativo (navegador)</span>
+        <div class="architecture">
+            <div class="component c-client">
+                <div class="icon">🧑‍💼</div>
+                <div class="name">Vendedor / Gerente</div>
+                <div class="desc">Acessa pelo navegador</div>
+            </div>
+            <div class="arrow">◄───►</div>
+            <div class="component c-config">
+                <div class="icon">🔐</div>
+                <div class="name">Login</div>
+                <div class="desc">Usuário/senha único (.env)</div>
+                <div class="tech">cookie de sessão assinado</div>
+            </div>
+            <div class="arrow">───►</div>
+            <div class="component c-agent">
+                <div class="icon">🖥️</div>
+                <div class="name">admin/ (router FastAPI)</div>
+                <div class="desc">Dashboard · Veículos · Leads · Sync</div>
+                <div class="tech">Jinja2 + Tailwind (CDN)</div>
+            </div>
+            <div class="arrow">◄───►</div>
+            <div class="component c-localdb">
+                <span class="core-tag">NOSSO</span>
+                <div class="icon">🗄️</div>
+                <div class="name">database.py</div>
+                <div class="desc">mesmo banco local do atendimento</div>
+                <div class="tech">SQLite · SQLAlchemy</div>
+            </div>
+        </div>
+        <div class="section-note" style="margin-left:4px;">O painel roda no mesmo processo FastAPI do bot (main.py inclui o router de admin) — sem serviço novo pra manter.</div>
+    </div>
+
+    <!-- ── TOOLS ───────────────────────────────────── -->
+    <div class="section-title">Tools que o Claude pode chamar</div>
+
+    <div class="tool-box">
+        <div class="title">🔧 Consulta de estoque — inventory.py (lê só o banco local, nunca o Supabase externo)</div>
+        <div class="tool-item">buscar_veiculos(marca?, preco_min?, preco_max?, carroceria?, cambio?, combustivel?) <span class="ret">→ lista resumida: nome, versão, preço, ano, km, foto capa</span></div>
+        <div class="tool-item">detalhes_veiculo(slug) <span class="ret">→ ficha completa: overview, destaques, todas as fotos da galeria</span></div>
+    </div>
+
+    <div class="tool-box" style="border-color:#10b981; background:#f0fdf9;">
+        <div class="title" style="color:#047857;">🔧 Gestão do lead — database.py (chamável a qualquer momento da conversa, não só no fim)</div>
+        <div class="tool-item">criar_ou_atualizar_lead(nome?, telefone?, veiculo_slug?, forma_pagamento?, tem_troca?, veiculo_troca_desc?, orcamento?, urgencia?, uso_pretendido?, como_conheceu?, preferencia_contato?, observacoes?) <span class="ret">→ upsert por phone_number, atualiza só os campos informados</span></div>
+    </div>
+
+    <!-- ── FLUXO ───────────────────────────────────── -->
+    <div class="section-title">Fluxo de conversa</div>
+
+    <div class="flow">
+        <div class="flow-step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <div class="who">📱 Cliente → WhatsApp → WAHA → ⚡ main.py</div>
+                <div class="what">Cliente entra em contato demonstrando interesse em um carro específico (ou pergunta geral). Webhook chega com os mesmos filtros de hoje: rate limit, mídia, spam, expiração de sessão.</div>
+                <span class="file">main.py → webhook()</span>
+            </div>
+        </div>
+        <div class="flow-step">
+            <div class="step-number lead">2</div>
+            <div class="step-content">
+                <div class="who">🤖 Claude AI ──tool_use──► 🗄️ criar_ou_atualizar_lead()</div>
+                <div class="what">Assim que tem nome/telefone/veículo de interesse, o Claude já chama a tool de lead — o registro nasce cedo, com status "novo". Não espera o fim da conversa para existir.</div>
+                <span class="rule">Premissa 3: cadastra o lead já no primeiro contato</span>
+            </div>
+        </div>
+        <div class="flow-step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+                <div class="who">🤖 Claude AI → 📱 Cliente</div>
+                <div class="what">Pergunta educadamente se o cliente tem dúvidas sobre o carro de interesse (specs, preço, itens, procedência, etc.).</div>
+            </div>
+        </div>
+        <div class="flow-step">
+            <div class="step-number tool">3a</div>
+            <div class="step-content">
+                <div class="who">🤖 Claude AI ──tool_use──► 🔎 inventory.py → 🗄️ SQLite local</div>
+                <div class="what">Toda dúvida sobre o veículo é respondida chamando <code>buscar_veiculos</code>/<code>detalhes_veiculo</code>. O texto de resposta é fundamentado exclusivamente no que a tool retornou.</div>
+                <span class="rule">Premissa 4: SEMPRE só a base local, NUNCA busca externa</span>
+                <div class="what" style="margin-top:6px;">Se a informação não está no banco (ex: "tem garantia de fábrica?" e o campo não existe), o Claude admite que não sabe e oferece repassar a pergunta ao vendedor — nunca inventa nem complementa com conhecimento geral sobre carros.</div>
+            </div>
+        </div>
+        <div class="flow-step">
+            <div class="step-number">4</div>
+            <div class="step-content">
+                <div class="who">🤖 Claude AI → 📱 Cliente</div>
+                <div class="what">Quando o cliente não tem mais dúvidas, o Claude conduz para o próximo objetivo: agendar visita à loja ou test-drive. Coleta preferência de dia/período (só interesse, sem calendário).</div>
+            </div>
+        </div>
+        <div class="flow-step">
+            <div class="step-number lead">5</div>
+            <div class="step-content">
+                <div class="who">🤖 Claude AI ──tool_use──► 🗄️ criar_ou_atualizar_lead()</div>
+                <div class="what">Ao longo de toda a conversa (não só no fim), o Claude vai enriquecendo o mesmo lead: forma de pagamento, se tem carro na troca (e qual), orçamento aproximado, urgência de compra, uso pretendido, como conheceu o carro/loja, preferência de horário.</div>
+                <span class="rule">Premissa 6: máximo de contexto pro vendedor, na linguagem do mundo automotivo</span>
+            </div>
+        </div>
+        <div class="flow-step">
+            <div class="step-number">6</div>
+            <div class="step-content">
+                <div class="who">⚡ main.py → 🐳 WAHA → 📱 Vendedor</div>
+                <div class="what">Nos momentos-chave (lead criado, lead qualificado, visita/test-drive solicitado), o vendedor recebe uma notificação no WhatsApp com o resumo acumulado do lead até aquele ponto.</div>
+                <span class="file">main.py → notify_staff()</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MODELO DE DADOS ─────────────────────────── -->
+    <div class="section-title">Modelo de dados</div>
+    <div class="section-note">Campo <span class="schema-box" style="display:inline; padding:1px 6px; border-radius:4px;"><span class="tenant">dealership_id</span></span> em todas as tabelas de negócio prepara o terreno pra multi-loja — hoje sempre aponta pra Company Imports.</div>
+
+    <div class="schema-grid">
+        <div class="schema-box">
+<span class="kw">class</span> <span class="tp">Dealership</span>(Base):<br>
+&nbsp;&nbsp;<span class="cm"># uma linha por loja cliente do produto</span><br>
+&nbsp;&nbsp;<span class="field">id</span>, <span class="field">nome</span>&nbsp;&nbsp;<span class="cm"># "Company Imports"</span><br>
+&nbsp;&nbsp;<span class="field">connector_type</span>&nbsp;&nbsp;<span class="cm"># "supabase" (hoje só esse)</span><br>
+&nbsp;&nbsp;<span class="field">connector_config_json</span>&nbsp;<span class="cm"># url/anon key da loja</span><br>
+&nbsp;&nbsp;<span class="field">staff_phone</span><br>
+&nbsp;&nbsp;<span class="field">last_sync_at</span>
+        </div>
+
+        <div class="schema-box">
+<span class="kw">class</span> <span class="tp">Vehicle</span>(Base):&nbsp;&nbsp;<span class="cm"># espelho local</span><br>
+&nbsp;&nbsp;<span class="field">id</span>, <span class="tenant">dealership_id</span>, <span class="field">slug</span>, <span class="field">code</span><br>
+&nbsp;&nbsp;<span class="field">brand</span>, <span class="field">model</span>, <span class="field">version</span>, <span class="field">year</span><br>
+&nbsp;&nbsp;<span class="field">price</span>, <span class="field">mileage</span>, <span class="field">status</span><br>
+&nbsp;&nbsp;<span class="field">body</span>, <span class="field">transmission</span>, <span class="field">fuel</span>, <span class="field">color</span><br>
+&nbsp;&nbsp;<span class="field">overview</span>, <span class="field">highlights_json</span><br>
+&nbsp;&nbsp;<span class="field">cover_image_url</span><br>
+&nbsp;&nbsp;<span class="field">synced_at</span>&nbsp;&nbsp;<span class="cm"># quando entrou/atualizou</span>
+        </div>
+
+        <div class="schema-box">
+<span class="kw">class</span> <span class="tp">VehicleImage</span>(Base):<br>
+&nbsp;&nbsp;<span class="field">id</span>, <span class="field">vehicle_id</span> <span class="cm">(FK Vehicle)</span><br>
+&nbsp;&nbsp;<span class="field">image_url</span><br>
+&nbsp;&nbsp;<span class="field">is_cover</span>, <span class="field">sort_order</span>
+        </div>
+
+        <div class="schema-box">
+<span class="kw">class</span> <span class="tp">Lead</span>(Base):<br>
+&nbsp;&nbsp;<span class="field">id</span>, <span class="tenant">dealership_id</span>, <span class="field">phone_number</span><br>
+&nbsp;&nbsp;<span class="field">nome</span>, <span class="field">telefone</span><br><br>
+&nbsp;&nbsp;<span class="cm"># interesse</span><br>
+&nbsp;&nbsp;<span class="field">veiculo_interesse</span>, <span class="field">veiculo_slug</span> <span class="cm">(FK Vehicle)</span><br><br>
+&nbsp;&nbsp;<span class="cm"># qualificação automotiva</span><br>
+&nbsp;&nbsp;<span class="field">forma_pagamento</span>&nbsp;&nbsp;<span class="cm"># à vista / financiado</span><br>
+&nbsp;&nbsp;<span class="field">tem_troca</span>, <span class="field">veiculo_troca_desc</span><br>
+&nbsp;&nbsp;<span class="field">orcamento_aproximado</span><br>
+&nbsp;&nbsp;<span class="field">urgencia_compra</span>&nbsp;&nbsp;<span class="cm"># "essa semana"...</span><br>
+&nbsp;&nbsp;<span class="field">uso_pretendido</span>&nbsp;&nbsp;<span class="cm"># pessoal/família/trabalho</span><br>
+&nbsp;&nbsp;<span class="field">como_conheceu</span>&nbsp;&nbsp;<span class="cm"># site/anúncio/indicação</span><br><br>
+&nbsp;&nbsp;<span class="cm"># agendamento (só interesse)</span><br>
+&nbsp;&nbsp;<span class="field">preferencia_contato</span><br><br>
+&nbsp;&nbsp;<span class="cm"># facilita o vendedor / prioriza</span><br>
+&nbsp;&nbsp;<span class="field">resumo_executivo</span>&nbsp;&nbsp;<span class="cm"># gerado pela IA, 3-4 linhas</span><br>
+&nbsp;&nbsp;<span class="field">prioridade</span>&nbsp;&nbsp;<span class="cm"># normal | quente</span><br><br>
+&nbsp;&nbsp;<span class="cm"># gestão</span><br>
+&nbsp;&nbsp;<span class="field">observacoes</span>, <span class="field">status</span><br>
+&nbsp;&nbsp;<span class="cm"># novo | qualificado | agendado | transferido | contatado | convertido | perdido</span><br>
+&nbsp;&nbsp;<span class="field">origem</span> = <span class="cm">"whatsapp"</span><br>
+&nbsp;&nbsp;<span class="field">created_at</span>, <span class="field">updated_at</span>
+        </div>
+    </div>
+
+    <!-- ── FUNCIONALIDADES ADICIONAIS ──────────────── -->
+    <div class="section-title">Funcionalidades adicionais — vender mais e facilitar o vendedor</div>
+    <div class="section-note">Selecionadas para entrar já nesta fase. Demais ideias exploradas (comparativo entre carros, cross-sell de alternativa, "match" com estoque novo, localização no Maps, roteiro por tipo de carro, glossário técnico, tom adaptado, histórico de cliente recorrente) ficam no roadmap futuro, no fim deste documento.</div>
+
+    <div class="decisions">
+        <div class="decision-card highlight">
+            <div class="q">Facilita o vendedor</div>
+            <div class="a">📝 Resumo executivo do lead</div>
+            <div class="why">Além dos campos brutos, o Claude gera um resumo curto (3-4 linhas) em linguagem natural ao qualificar o lead — ex: "Cliente quer BMW X5, tem Corolla 2020 na troca, financiado, quer decidir essa semana." Poupa o vendedor de vasculhar campo por campo. Guardado no próprio Lead (campo <code>resumo_executivo</code>), atualizado a cada mudança relevante.</div>
+        </div>
+        <div class="decision-card highlight">
+            <div class="q">Vender mais / priorizar</div>
+            <div class="a">🔥 Tag "lead quente" automática</div>
+            <div class="why">Regra simples calculada quando o lead é salvo: urgência alta + orçamento compatível com o veículo + já pediu agendamento → marca <code>prioridade = "quente"</code>. No painel, esses leads aparecem em destaque no topo do Dashboard e da lista de Leads.</div>
+        </div>
+        <div class="decision-card highlight">
+            <div class="q">Atendimento humanizado</div>
+            <div class="a">🙋 Transferência para humano</div>
+            <div class="why">Se o cliente pede explicitamente ("quero falar com uma pessoa") ou o Claude detecta frustração (reclamação repetida, tom alterado), o bot avisa que vai chamar o vendedor, marca o Lead como <code>status = "transferido"</code> e dispara notificação imediata — sem tentar resolver sozinho.</div>
+        </div>
+    </div>
+
+    <!-- ── PAINEL ADMIN ────────────────────────────── -->
+    <div class="section-title">Painel Administrativo — telas</div>
+    <div class="section-note">Visual no mesmo espírito do site da Company Imports (dark, premium, fotos em destaque) — ver referência em <code>estoque_company_imports.html</code>.</div>
+
+    <div class="decisions">
+        <div class="decision-card">
+            <div class="q">Tela 1</div>
+            <div class="a">🔐 Login</div>
+            <div class="why">Usuário/senha único (.env). Sessão via cookie assinado. Todas as telas abaixo exigem login.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Tela 2</div>
+            <div class="a">📊 Dashboard</div>
+            <div class="why">Total de leads, funil por status (novo → qualificado → agendado → convertido/perdido), leads por veículo, última sincronização em destaque.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Tela 3</div>
+            <div class="a">🚘 Veículos</div>
+            <div class="why">Grid de cards com todas as fotos (galeria), preço, ano, km, descrição/destaques — os mesmos dados sincronizados do Supabase da loja, só leitura (a origem dos dados é o sistema da loja).</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Tela 4</div>
+            <div class="a">👤 Leads (lista)</div>
+            <div class="why">Tabela/cards com nome, telefone, veículo de interesse, status, forma de pagamento, tem troca, criado em — filtrável por status e por veículo.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Tela 5</div>
+            <div class="a">💬 Detalhe do Lead</div>
+            <div class="why">Todos os campos de qualificação (orçamento, urgência, uso pretendido, como conheceu, preferência de contato) + histórico completo da conversa com o bot, pra dar contexto total ao vendedor.</div>
+        </div>
+        <div class="decision-card">
+            <div class="q">Tela 6</div>
+            <div class="a">🔄 Sincronização</div>
+            <div class="why">Última sincronização (data/hora), quantidade de veículos importados, log da última execução, botão "Sincronizar agora".</div>
+        </div>
+    </div>
+
+    <!-- ── ARQUIVOS ────────────────────────────────── -->
+    <div class="section-title">Mapa de Arquivos</div>
+
+    <table class="file-table">
+        <thead>
+            <tr>
+                <th>Arquivo</th>
+                <th>Status</th>
+                <th>Função</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="file-name">main.py</td>
+                <td><span class="file-badge badge-changed">Ajustado</span></td>
+                <td>Mesma estrutura de webhook/rate-limit/expiração. Notifica o vendedor nos marcos do lead (criado, qualificado, agendamento pedido).</td>
+            </tr>
+            <tr>
+                <td class="file-name">claude_agent.py</td>
+                <td><span class="file-badge badge-changed">Ajustado</span></td>
+                <td>Loop de tool use: chama inventory.py (consulta) e database.py (lead) conforme o Claude decide, a qualquer momento da conversa.</td>
+            </tr>
+            <tr>
+                <td class="file-name">dealership_config.py</td>
+                <td><span class="file-badge badge-changed">Substitui restaurant_config.py</span></td>
+                <td>System prompt do novo fluxo (interesse → lead cedo → dúvidas só da base → agendamento → qualificação contínua). FAQ institucional genérico.</td>
+            </tr>
+            <tr>
+                <td class="file-name">inventory.py</td>
+                <td><span class="file-badge badge-new">Novo</span></td>
+                <td>Implementa as tools de consulta de veículo. Lê exclusivamente do SQLite local — nunca chama o Supabase da loja em tempo real.</td>
+            </tr>
+            <tr>
+                <td class="file-name">connectors/base.py</td>
+                <td><span class="file-badge badge-new">Novo</span></td>
+                <td>Interface abstrata <code>VehicleSourceConnector</code> — contrato que qualquer loja nova precisa implementar (fetch_vehicles, fetch_images).</td>
+            </tr>
+            <tr>
+                <td class="file-name">connectors/supabase_connector.py</td>
+                <td><span class="file-badge badge-new">Novo</span></td>
+                <td>Implementação específica da Company Imports — só essa parte é "não genérica" hoje.</td>
+            </tr>
+            <tr>
+                <td class="file-name">sync_inventory.py</td>
+                <td><span class="file-badge badge-new">Novo</span></td>
+                <td>Script/job que roda o conector, filtra Disponível+Publicado, e faz upsert em Vehicle/VehicleImage no banco local. Rodável manualmente ou agendado.</td>
+            </tr>
+            <tr>
+                <td class="file-name">database.py</td>
+                <td><span class="file-badge badge-changed">Ajustado</span></td>
+                <td><code>Conversation</code> continua igual. Novas tabelas: <code>Dealership</code>, <code>Vehicle</code>, <code>VehicleImage</code>. <code>Order</code> vira <code>Lead</code> (qualificação automotiva completa, upsert progressivo).</td>
+            </tr>
+            <tr>
+                <td class="file-name">admin/routes.py</td>
+                <td><span class="file-badge badge-new">Novo</span></td>
+                <td>Router FastAPI do painel: login, dashboard, veículos, leads, detalhe do lead, sincronização. Incluído em main.py.</td>
+            </tr>
+            <tr>
+                <td class="file-name">admin/auth.py</td>
+                <td><span class="file-badge badge-new">Novo</span></td>
+                <td>Checagem de usuário/senha do .env e emissão/validação do cookie de sessão assinado.</td>
+            </tr>
+            <tr>
+                <td class="file-name">admin/templates/*.html</td>
+                <td><span class="file-badge badge-new">Novo</span></td>
+                <td>Templates Jinja2 (Tailwind via CDN) — login, dashboard, lista de veículos, lista de leads, detalhe do lead, sincronização.</td>
+            </tr>
+            <tr>
+                <td class="file-name">docker-compose.yml</td>
+                <td><span class="file-badge badge-same">Igual</span></td>
+                <td>Sobe o WAHA em container Docker (porta 8080) — não muda.</td>
+            </tr>
+            <tr>
+                <td class="file-name">tests/*.py</td>
+                <td><span class="file-badge badge-changed">Ajustado</span></td>
+                <td>Cenários cobrindo: lead criado cedo, respostas fundamentadas só na base local, recusa educada quando falta dado, qualificação progressiva, pedido de agendamento.</td>
+            </tr>
+            <tr>
+                <td class="file-name">deploy/*</td>
+                <td><span class="file-badge badge-same">Igual</span></td>
+                <td>systemd + nginx — infraestrutura não muda.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- ── ROADMAP ─────────────────────────────────── -->
+    <div class="section-title">Roadmap futuro (não implementado nesta fase)</div>
+    <div class="section-note">Ideias avaliadas e com potencial, mas fora do escopo inicial — exigem mais complexidade ou dependem de aprender com o uso real primeiro.</div>
+
+    <div class="premises">
+        <div class="premise">
+            <div class="num">↗</div>
+            <div class="txt"><b>Comparativo lado a lado</b> — quando o cliente está em dúvida entre 2-3 carros, montar uma tabela comparativa automática.</div>
+        </div>
+        <div class="premise">
+            <div class="num">↗</div>
+            <div class="txt"><b>Cross-sell de alternativa</b> — se o carro de interesse já vendeu ou saiu do orçamento, sugerir automaticamente um similar do próprio estoque.</div>
+        </div>
+        <div class="premise">
+            <div class="num">↗</div>
+            <div class="txt"><b>"Match" com estoque novo</b> — quando um carro compatível com o perfil de um lead antigo entra no estoque, avisar o vendedor pra reengajar.</div>
+        </div>
+        <div class="premise">
+            <div class="num">↗</div>
+            <div class="txt"><b>Localização no Maps</b> — enviar o link da loja junto da confirmação de agendamento.</div>
+        </div>
+        <div class="premise">
+            <div class="num">↗</div>
+            <div class="txt"><b>Roteiro de qualificação por tipo de carro</b> — perguntas adaptadas (SUV → família/porta-malas, picape → uso comercial, esportivo → performance).</div>
+        </div>
+        <div class="premise">
+            <div class="num">↗</div>
+            <div class="txt"><b>Glossário técnico automotivo</b> — explicar termos (ex: "o que é xDrive") sempre fundamentado só na base própria.</div>
+        </div>
+        <div class="premise">
+            <div class="num">↗</div>
+            <div class="txt"><b>Tom adaptado ao perfil</b> — mais direto com quem já sabe o que quer, mais explicativo com quem está pesquisando.</div>
+        </div>
+        <div class="premise">
+            <div class="num">↗</div>
+            <div class="txt"><b>Histórico de cliente recorrente</b> — mostrar ao vendedor tudo que aquele telefone já perguntou em conversas anteriores (CRM básico).</div>
+        </div>
+    </div>
+
+    <div class="footer">
+        CarIA — Documento de arquitetura (proposta, ainda não implementada) · Piloto: Company Imports (Maringá/PR) · Desenhado para multi-loja
+    </div>
+
+</body>
+</html>
