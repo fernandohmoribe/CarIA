@@ -42,7 +42,7 @@
                     <span class="text-xs text-zinc-600">normal</span>
                     {% endif %}
                 </td>
-                <td class="px-5 py-3 text-zinc-500 text-xs">{{ lead.updated_at.strftime("%d/%m %H:%M") if lead.updated_at else "—" }}</td>
+                <td class="px-5 py-3 text-zinc-500 text-xs">{{ lead.updated_at | local_time("%d/%m %H:%M") }}</td>
             </tr>
             {% else %}
             <tr><td colspan="5" class="px-5 py-8 text-center text-zinc-600">Nenhum lead encontrado.</td></tr>

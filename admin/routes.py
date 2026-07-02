@@ -15,9 +15,19 @@ from database import (
     get_default_dealership,
     get_lead_by_id,
 )
+from dealership_config import to_local
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+
+def _local_time(dt, fmt: str = "%d/%m/%Y %H:%M", default: str = "—") -> str:
+    """Filtro Jinja — converte datetime UTC do banco pro fuso do negócio antes de exibir."""
+    local = to_local(dt)
+    return local.strftime(fmt) if local else default
+
+
+templates.env.filters["local_time"] = _local_time
 
 
 def _transform(url: str, width: int, height: int, quality: int = 65) -> str:
@@ -38,9 +48,15 @@ def _brl(value) -> str:
     return formatted.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-templates.env.filters["thumb"] = lambda url: _transform(url, 100, 70, 50)
-templates.env.filters["medium"] = lambda url: _transform(url, 480, 320, 65)
+def _img_src(local_path: str, remote_url: str, width: int, height: int, quality: int = 65) -> str:
+    """Prefere a foto já baixada em media/ — só cai pro Supabase se ainda não tiver sido baixada."""
+    if local_path:
+        return f"/media/{local_path}"
+    return _transform(remote_url, width, height, quality)
+
+
 templates.env.filters["brl"] = _brl
+templates.env.globals["img_src"] = _img_src
 
 
 @router.get("/")

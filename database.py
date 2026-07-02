@@ -82,6 +82,15 @@ class Vehicle(Base):
         except json.JSONDecodeError:
             return []
 
+    @property
+    def cover_local_path(self) -> str | None:
+        for img in self.images:
+            if img.is_cover and img.local_path:
+                return img.local_path
+        if self.images and self.images[0].local_path:
+            return self.images[0].local_path
+        return None
+
 
 class VehicleImage(Base):
     __tablename__ = "vehicle_images"
@@ -89,6 +98,7 @@ class VehicleImage(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), index=True)
     image_url = Column(String, nullable=False)
+    local_path = Column(String, nullable=True)  # caminho relativo dentro de media/, se já baixada
     is_cover = Column(Boolean, default=False)
     sort_order = Column(Integer, default=0)
 
@@ -118,6 +128,7 @@ class Lead(Base):
     dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
     phone_number = Column(String, index=True)
     nome = Column(String)
+    email = Column(String)
     telefone = Column(String)
 
     # interesse
@@ -331,7 +342,7 @@ def get_or_create_lead(db, dealership_id: int, phone_number: str) -> tuple[Lead,
 
 
 LEAD_UPDATABLE_FIELDS = {
-    "nome", "telefone", "veiculo_interesse", "veiculo_slug", "forma_pagamento", "tem_troca",
+    "nome", "email", "telefone", "veiculo_interesse", "veiculo_slug", "forma_pagamento", "tem_troca",
     "veiculo_troca_desc", "orcamento_aproximado", "urgencia_compra", "uso_pretendido",
     "como_conheceu", "preferencia_contato", "resumo_executivo", "observacoes", "status",
 }
@@ -364,6 +375,7 @@ def lead_to_dict(lead: Lead) -> dict:
         "id": lead.id,
         "phone_number": lead.phone_number,
         "nome": lead.nome,
+        "email": lead.email,
         "telefone": lead.telefone,
         "veiculo_interesse": lead.veiculo_interesse,
         "veiculo_slug": lead.veiculo_slug,

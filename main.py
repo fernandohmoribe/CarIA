@@ -1,14 +1,19 @@
+from __future__ import annotations
+
 import asyncio
+import base64
 import logging
 import os
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from claude_agent import get_ai_response
@@ -35,6 +40,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title=f"{DEALERSHIP_NAME} — WhatsApp Bot")
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY", "dev-secret-change-me"))
+
+MEDIA_ROOT = Path(__file__).parent / "media"
+os.makedirs("media", exist_ok=True)
+app.mount("/media", StaticFiles(directory="media"), name="media")
 
 from admin.routes import router as admin_router  # noqa: E402  (depende do app/middleware acima)
 
@@ -103,6 +112,39 @@ async def set_typing(phone: str) -> None:
             pass
 
 
+def _build_image_file(foto: dict) -> dict | None:
+    """Monta o payload `file` do WAHA a partir do arquivo local em media/ (preferencial,
+    já otimizado em .webp) ou, se ainda não foi baixado, da URL remota como fallback."""
+    local_path = foto.get("local_path")
+    if local_path:
+        full_path = MEDIA_ROOT / local_path
+        if full_path.is_file():
+            data = base64.b64encode(full_path.read_bytes()).decode("ascii")
+            return {"mimetype": "image/webp", "filename": full_path.name, "data": data}
+    url = foto.get("url")
+    if url:
+        return {"mimetype": "image/jpeg", "filename": "foto.jpg", "url": url}
+    return None
+
+
+async def send_vehicle_photos(phone: str, photos: dict) -> None:
+    url = f"{WAHA_BASE_URL}/api/sendImage"
+    veiculo = photos.get("veiculo") or ""
+    async with httpx.AsyncClient(timeout=30) as client:
+        for i, foto in enumerate(photos.get("fotos", [])):
+            file_payload = _build_image_file(foto)
+            if not file_payload:
+                continue
+            payload = {"chatId": to_chat_id(phone), "session": WAHA_SESSION, "file": file_payload}
+            if i == 0 and veiculo:
+                payload["caption"] = f"📸 {veiculo}"
+            try:
+                resp = await client.post(url, json=payload, headers=WAHA_HEADERS)
+                resp.raise_for_status()
+            except Exception as e:
+                logger.warning(f"Falha ao enviar foto {i + 1} pra {phone}: {e}")
+
+
 async def notify_staff(lead: dict, phone: str) -> None:
     if not DEALERSHIP_STAFF_PHONE:
         return
@@ -112,6 +154,7 @@ async def notify_staff(lead: dict, phone: str) -> None:
     linhas.append(f"👤 Nome: {lead.get('nome') or '—'}")
     linhas.append(f"📱 WhatsApp: {phone}")
     linhas.append(f"📞 Telefone: {lead.get('telefone') or '—'}")
+    linhas.append(f"✉️ Email: {lead.get('email') or '—'}")
     if lead.get("veiculo_interesse"):
         linhas.append(f"🚘 Interesse: {lead['veiculo_interesse']}")
     if lead.get("forma_pagamento"):
@@ -157,9 +200,9 @@ def _sync_process(phone: str, text: str, push_name: str):
 
         if len(history) >= MAX_TURNS * 2:
             logger.info(f"[LIMITE] {phone} atingiu {MAX_TURNS} turnos")
-            return "Sua sessão expirou. Envie *reiniciar* para começar novamente.", None
+            return "Sua sessão expirou. Envie *reiniciar* para começar novamente.", None, None
 
-        ai_text, lead_to_notify = get_ai_response(
+        ai_text, lead_to_notify, photos_to_send = get_ai_response(
             messages=history,
             user_message=text,
             phone=phone,
@@ -172,7 +215,7 @@ def _sync_process(phone: str, text: str, push_name: str):
             history = history[-20:]
         save_conversation(db, phone, history)
 
-        return ai_text, lead_to_notify
+        return ai_text, lead_to_notify, photos_to_send
     finally:
         db.close()
 
@@ -180,8 +223,10 @@ def _sync_process(phone: str, text: str, push_name: str):
 async def process_message(phone: str, text: str, push_name: str) -> None:
     await set_typing(phone)
     try:
-        ai_text, lead_to_notify = await asyncio.to_thread(_sync_process, phone, text, push_name)
+        ai_text, lead_to_notify, photos_to_send = await asyncio.to_thread(_sync_process, phone, text, push_name)
         await send_message(phone, ai_text)
+        if photos_to_send:
+            await send_vehicle_photos(phone, photos_to_send)
         if lead_to_notify:
             await notify_staff(lead_to_notify, phone)
     except Exception as exc:

@@ -38,9 +38,25 @@ TOOLS = [
     {
         "name": "detalhes_veiculo",
         "description": (
-            "Retorna a ficha completa de um veículo específico (descrição, destaques, "
-            "todas as fotos da galeria). Use quando o cliente demonstra interesse em um "
-            "veículo específico e quer saber mais detalhes."
+            "Retorna a ficha completa de um veículo específico (descrição, destaques, specs). "
+            "Use quando o cliente demonstra interesse em um veículo específico e quer saber mais "
+            "detalhes. NÃO inclui fotos — pra enviar fotos use a tool `enviar_fotos_veiculo`."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "slug": {"type": "string", "description": "O slug do veículo, obtido em uma busca anterior"},
+            },
+            "required": ["slug"],
+        },
+    },
+    {
+        "name": "enviar_fotos_veiculo",
+        "description": (
+            "Envia pro cliente, como mensagens de imagem reais no WhatsApp (não links de texto), "
+            "as fotos do veículo. Use sempre que o cliente pedir fotos, imagens, mais fotos ou "
+            "\"quero ver o carro\". NUNCA cole URLs de fotos na mensagem de texto — chame esta tool, "
+            "que busca os arquivos e manda de verdade."
         ),
         "input_schema": {
             "type": "object",
@@ -77,7 +93,6 @@ def _detail(v: Vehicle) -> dict:
             "spec": v.spec,
             "overview": v.overview,
             "destaques": v.highlights(),
-            "fotos": [img.image_url for img in v.images],
         }
     )
     return data
@@ -138,5 +153,23 @@ def detalhes_veiculo(dealership_id: int, slug: str) -> dict:
         if not vehicle:
             return {"erro": "Veículo não encontrado na nossa base de dados."}
         return _detail(vehicle)
+    finally:
+        db.close()
+
+
+def listar_fotos_veiculo(dealership_id: int, slug: str) -> dict:
+    """Retorna os arquivos de foto do veículo (caminho local em media/, com URL remota
+    como fallback) pra envio real via WhatsApp — nunca pra exibir como link em texto."""
+    db = SessionLocal()
+    try:
+        vehicle = get_vehicle_by_slug(db, dealership_id, slug)
+        if not vehicle:
+            return {"erro": "Veículo não encontrado na nossa base de dados.", "fotos": []}
+        if not vehicle.images:
+            return {"erro": "Esse veículo não tem fotos cadastradas.", "fotos": []}
+        return {
+            "veiculo": f"{vehicle.brand} {vehicle.model} {vehicle.version or ''}".strip(),
+            "fotos": [{"local_path": img.local_path, "url": img.image_url} for img in vehicle.images],
+        }
     finally:
         db.close()

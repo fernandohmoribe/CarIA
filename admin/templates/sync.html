@@ -19,7 +19,7 @@
         <div class="flex justify-between"><dt class="text-zinc-500">Loja</dt><dd class="text-zinc-200">{{ dealership.nome if dealership else "—" }}</dd></div>
         <div class="flex justify-between"><dt class="text-zinc-500">Conector</dt><dd class="text-zinc-200">{{ dealership.connector_type if dealership else "—" }}</dd></div>
         <div class="flex justify-between"><dt class="text-zinc-500">Veículos no banco local</dt><dd class="text-zinc-200">{{ total_vehicles }}</dd></div>
-        <div class="flex justify-between"><dt class="text-zinc-500">Última sincronização</dt><dd class="text-zinc-200">{{ dealership.last_sync_at.strftime("%d/%m/%Y %H:%M") if dealership and dealership.last_sync_at else "nunca" }}</dd></div>
+        <div class="flex justify-between"><dt class="text-zinc-500">Última sincronização</dt><dd class="text-zinc-200">{{ (dealership.last_sync_at if dealership else None) | local_time("%d/%m/%Y %H:%M", "nunca") }}</dd></div>
     </dl>
 
     <form method="post" action="/admin/sync/run">

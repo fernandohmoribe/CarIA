@@ -1,18 +1,20 @@
 import json
 import logging
-from datetime import date
+from datetime import datetime
 from typing import Optional, Tuple
 
 import anthropic
 
 import inventory
 from database import SessionLocal, get_default_dealership, get_or_create_lead, lead_to_dict, update_lead
-from dealership_config import SYSTEM_PROMPT
+from dealership_config import BUSINESS_TZ, SYSTEM_PROMPT
 
 MODEL = "claude-haiku-4-5"
 MAX_TOKENS = 700
 MAX_HISTORY_MESSAGES = 20
 MAX_TOOL_ITERATIONS = 6
+
+DIAS_SEMANA = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
 
 PRICE_INPUT = 1.00
 PRICE_OUTPUT = 5.00
@@ -32,6 +34,7 @@ LEAD_TOOL = {
         "type": "object",
         "properties": {
             "nome": {"type": "string"},
+            "email": {"type": "string"},
             "telefone": {"type": "string"},
             "veiculo_interesse": {"type": "string", "description": "Ex: 'BMW X5 xDrive45e'"},
             "veiculo_slug": {"type": "string", "description": "Slug do veículo, se conhecido de uma busca anterior"},
@@ -85,11 +88,48 @@ def _handle_lead_tool(tool_input: dict, dealership_id: int, phone: str) -> dict:
         db.close()
 
 
+def _content_blocks(content) -> list:
+    """Normaliza content (string, blocks do SDK ou lista de dicts) pra lista de dicts —
+    necessário pra poder anexar cache_control num bloco específico."""
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    return [block.model_dump(exclude_none=True) if hasattr(block, "model_dump") else dict(block) for block in content]
+
+
+def _refresh_cache_breakpoint(api_messages: list) -> None:
+    """Move o breakpoint de cache pro fim do histórico atual, removendo o anterior.
+
+    Sem isso, cada chamada extra do loop de tool use (e o turno seguinte, que reenvia
+    o mesmo histórico) paga preço cheio de input em vez de cache read (~10x mais barato)
+    pra reenviar o mesmo prefixo de conversa repetidamente.
+    """
+    for msg in api_messages:
+        for block in msg["content"]:
+            block.pop("cache_control", None)
+    if api_messages:
+        api_messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}
+
+
+def _handle_photos_tool(tool_input: dict, dealership_id: int) -> dict:
+    data = inventory.listar_fotos_veiculo(dealership_id=dealership_id, slug=tool_input.get("slug", ""))
+    if data.get("erro") or not data.get("fotos"):
+        return {"erro": data.get("erro") or "Nenhuma foto encontrada pra esse veículo."}
+    return {
+        "veiculo": data["veiculo"],
+        "fotos_enviadas": len(data["fotos"]),
+        # chave privada, removida antes de mandar o resultado pro Claude — carrega os
+        # caminhos reais só pra camada de envio (main.py), nunca pro texto da conversa.
+        "_fotos": data["fotos"],
+    }
+
+
 def _dispatch_tool(name: str, tool_input: dict, dealership_id: int, phone: str) -> dict:
     if name == "buscar_veiculos":
         return inventory.buscar_veiculos(dealership_id=dealership_id, **tool_input)
     if name == "detalhes_veiculo":
         return inventory.detalhes_veiculo(dealership_id=dealership_id, **tool_input)
+    if name == "enviar_fotos_veiculo":
+        return _handle_photos_tool(tool_input, dealership_id)
     if name == "criar_ou_atualizar_lead":
         return _handle_lead_tool(tool_input, dealership_id, phone)
     return {"erro": f"tool desconhecida: {name}"}
@@ -100,25 +140,28 @@ def get_ai_response(
     user_message: str,
     phone: str,
     push_name: str = "",
-) -> Tuple[str, Optional[dict]]:
+) -> Tuple[str, Optional[dict], Optional[dict]]:
     """
     Gera resposta da IA, executando o loop de tool use (consulta de estoque e
     gestão de lead) quando necessário.
 
-    Retorna: (texto_resposta, lead_para_notificar | None)
+    Retorna: (texto_resposta, lead_para_notificar | None, fotos_para_enviar | None)
     """
     first_message = user_message
     if push_name and not messages:
         first_message = f"[Cliente: {push_name}] {user_message}"
 
-    api_messages = messages.copy()
-    api_messages.append({"role": "user", "content": first_message})
+    api_messages = [{"role": m["role"], "content": _content_blocks(m["content"])} for m in messages]
+    api_messages.append({"role": "user", "content": _content_blocks(first_message)})
 
     if len(api_messages) > MAX_HISTORY_MESSAGES:
         api_messages = api_messages[-MAX_HISTORY_MESSAGES:]
 
-    today = date.today().strftime("%d/%m/%Y")
-    system_with_date = f"Hoje é {today}.\n\n{SYSTEM_PROMPT}"
+    agora = datetime.now(BUSINESS_TZ)
+    dia_semana = DIAS_SEMANA[agora.weekday()]
+    periodo = "manhã" if agora.hour < 12 else "tarde" if agora.hour < 18 else "noite"
+    hoje = f"{dia_semana}, {agora.strftime('%d/%m/%Y')}, {periodo} (horário de Brasília)"
+    system_with_date = f"Hoje é {hoje}.\n\n{SYSTEM_PROMPT}"
 
     db = SessionLocal()
     try:
@@ -128,9 +171,11 @@ def get_ai_response(
     dealership_id = dealership.id if dealership else None
 
     lead_to_notify = None
+    photos_to_send = None
     text_parts = []
 
     for _ in range(MAX_TOOL_ITERATIONS):
+        _refresh_cache_breakpoint(api_messages)
         response = _client.messages.create(
             model=MODEL,
             max_tokens=MAX_TOKENS,
@@ -147,9 +192,9 @@ def get_ai_response(
             text_parts.append(turn_text)
 
         if response.stop_reason != "tool_use":
-            return "\n\n".join(text_parts), lead_to_notify
+            return "\n\n".join(text_parts), lead_to_notify, photos_to_send
 
-        api_messages.append({"role": "assistant", "content": response.content})
+        api_messages.append({"role": "assistant", "content": _content_blocks(response.content)})
         tool_results = []
         for block in response.content:
             if block.type != "tool_use":
@@ -157,6 +202,8 @@ def get_ai_response(
             result = _dispatch_tool(block.name, block.input, dealership_id, phone)
             if block.name == "criar_ou_atualizar_lead" and result.get("_notify"):
                 lead_to_notify = result
+            if block.name == "enviar_fotos_veiculo" and "_fotos" in result:
+                photos_to_send = {"veiculo": result.get("veiculo"), "fotos": result.pop("_fotos")}
             tool_results.append(
                 {
                     "type": "tool_result",
@@ -167,6 +214,7 @@ def get_ai_response(
         api_messages.append({"role": "user", "content": tool_results})
 
     # Estourou o limite de iterações de tool use: força uma resposta final sem tools
+    _refresh_cache_breakpoint(api_messages)
     response = _client.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
@@ -176,7 +224,7 @@ def get_ai_response(
     final_text = "".join(block.text for block in response.content if block.type == "text").strip()
     if final_text:
         text_parts.append(final_text)
-    return "\n\n".join(text_parts), lead_to_notify
+    return "\n\n".join(text_parts), lead_to_notify, photos_to_send
 
 
 def _log_usage(usage, phone: str):

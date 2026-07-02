@@ -159,7 +159,7 @@ def run_scenario(scenario: dict, pause: bool = True) -> None:
             continue
 
         try:
-            ai_text, lead = get_ai_response(
+            ai_text, lead, photos = get_ai_response(
                 messages=history,
                 user_message=msg,
                 phone=phone,
@@ -183,6 +183,9 @@ def run_scenario(scenario: dict, pause: bool = True) -> None:
         print(f"{GREEN}{BOLD}Bot:{RESET}")
         for line in ai_text.splitlines():
             print(f"  {line}")
+
+        if photos:
+            print(f"\n{CYAN}{BOLD}📸 FOTOS ENVIADAS (simulado):{RESET} {len(photos.get('fotos', []))} arquivo(s) de {photos.get('veiculo')}")
 
         if lead:
             lead_detectado = True

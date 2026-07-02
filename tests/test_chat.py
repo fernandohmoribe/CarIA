@@ -21,6 +21,9 @@ sys.path.insert(0, str(ROOT))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{ROOT}/db/cariar_bot_test.db")
 
 import argparse
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 from claude_agent import get_ai_response
 from database import SessionLocal, get_conversation, close_conversation, save_conversation
@@ -39,6 +42,15 @@ def print_bot(text: str) -> None:
     print(f"\n{GREEN}{BOLD}🤖 Bot:{RESET_COLOR}")
     for line in text.splitlines():
         print(f"   {line}")
+    print()
+
+
+def print_photos(photos: dict) -> None:
+    fotos = photos.get("fotos", [])
+    print(f"{CYAN}{BOLD}📸 FOTOS ENVIADAS (simulado — {len(fotos)} arquivo(s) de {photos.get('veiculo')}):{RESET_COLOR}")
+    for foto in fotos:
+        origem = foto.get("local_path") or foto.get("url")
+        print(f"   {origem}")
     print()
 
 
@@ -125,7 +137,7 @@ def main() -> None:
             continue
 
         try:
-            ai_text, lead_to_notify = get_ai_response(
+            ai_text, lead_to_notify, photos_to_send = get_ai_response(
                 messages=history,
                 user_message=user_input,
                 phone=phone,
@@ -147,6 +159,9 @@ def main() -> None:
             db.close()
 
         print_bot(ai_text)
+
+        if photos_to_send:
+            print_photos(photos_to_send)
 
         if lead_to_notify:
             print_lead(lead_to_notify)

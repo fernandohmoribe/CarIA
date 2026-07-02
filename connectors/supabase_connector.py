@@ -23,6 +23,29 @@ class SupabaseVehicleConnector(VehicleSourceConnector):
     def _headers(self) -> dict:
         return {"apikey": self.anon_key, "Authorization": f"Bearer {self.anon_key}"}
 
+    def download_image(self, image_url: str, dest_path, width: int = 1000, height: int = 750, quality: int = 78) -> bool:
+        """Baixa uma imagem já otimizada (resize + WebP) via a API de transformação do
+        Supabase Storage, direto pra dest_path. Retorna True se conseguiu salvar."""
+        marker = "/storage/v1/object/public/"
+        idx = image_url.find(marker)
+        if idx == -1:
+            return False
+        base = image_url[:idx]
+        rest = image_url[idx + len(marker):]
+        transform_url = f"{base}/storage/v1/render/image/public/{rest}?width={width}&height={height}&resize=contain&quality={quality}"
+
+        headers = self._headers()
+        headers["Accept"] = "image/webp"
+        try:
+            resp = httpx.get(transform_url, headers=headers, timeout=self.timeout)
+            resp.raise_for_status()
+        except httpx.HTTPError:
+            return False
+
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(resp.content)
+        return True
+
     def fetch_vehicles(self) -> list[dict]:
         params = {"select": "*"}
         if self.only_available:

@@ -8,6 +8,7 @@
     <div>
         <h1 class="text-2xl font-semibold text-zinc-100">{{ lead.nome or "Sem nome" }}</h1>
         <p class="text-zinc-500 text-sm mt-1">{{ lead.telefone or lead.phone_number }}</p>
+        {% if lead.email %}<p class="text-zinc-500 text-sm">{{ lead.email }}</p>{% endif %}
     </div>
     <div class="flex gap-2">
         {% if lead.prioridade == "quente" %}
@@ -57,7 +58,7 @@
 <div class="space-y-6">
     {% for conv in conversas %}
     <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-5">
-        <div class="text-xs text-zinc-500 mb-3">Sessão {{ conv.created_at.strftime("%d/%m/%Y %H:%M") if conv.created_at else "" }} — status: {{ conv.status }}</div>
+        <div class="text-xs text-zinc-500 mb-3">Sessão {{ conv.created_at | local_time("%d/%m/%Y %H:%M") }} — status: {{ conv.status }}</div>
         <div class="space-y-3">
             {% for msg in conv.mensagens %}
             <div class="flex {{ 'justify-end' if msg.role == 'user' else 'justify-start' }}">
