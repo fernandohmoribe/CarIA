@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
+import secrets
 from datetime import datetime
 
 from sqlalchemy import (
@@ -192,9 +195,10 @@ class Lead(Base):
 
 
 # ── Usuários ─────────────────────────────────────────────────────────────
-# Versão mínima, só pra existir alguém pra referenciar em lead_historico.user_id — ainda não tem
-# perfis/permissões (admin vs vendedor, ver MELHORIAS). Um usuário especial "IA" representa
-# mudanças automáticas feitas pelo bot, sem intervenção humana.
+# Cada pessoa tem login próprio (password_hash) — ainda sem diferenciação de permissão entre
+# admin/vendedor (ver MELHORIAS), só identidade distinta pra atribuir corretamente no
+# lead_historico. password_hash fica nullable porque o usuário especial "IA" (mudanças
+# automáticas do bot) nunca loga, só existe pra ser referenciado como autor.
 IA_USERNAME = "IA"
 
 
@@ -204,6 +208,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False, index=True)
     nome = Column(String)
+    password_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -254,6 +259,26 @@ def get_default_dealership(db) -> Dealership | None:
 
 
 # ── Usuários ─────────────────────────────────────────────────────────────
+_PBKDF2_ITERATIONS = 260_000
+
+
+def hash_password(password: str) -> str:
+    """PBKDF2-HMAC-SHA256 com salt aleatório — só stdlib, sem dependência nova pro piloto.
+    Formato salvo: "salt_hex$hash_hex"."""
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), _PBKDF2_ITERATIONS)
+    return f"{salt}${digest.hex()}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        salt, expected_hex = password_hash.split("$", 1)
+    except (ValueError, AttributeError):
+        return False
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), _PBKDF2_ITERATIONS)
+    return hmac.compare_digest(digest.hex(), expected_hex)
+
+
 def get_or_create_user(db, username: str, nome: str | None = None) -> User:
     user = db.query(User).filter(User.username == username).first()
     if user:
@@ -267,6 +292,29 @@ def get_or_create_user(db, username: str, nome: str | None = None) -> User:
 
 def get_ia_user(db) -> User:
     return get_or_create_user(db, IA_USERNAME, "Inteligência Artificial")
+
+
+def create_user_with_password(db, username: str, password: str, nome: str | None = None) -> User:
+    """Cria um login novo (ou atualiza a senha de um usuário já existente, ex: o "admin"
+    criado via sessão antes de ter senha própria)."""
+    user = db.query(User).filter(User.username == username).first()
+    if user:
+        user.password_hash = hash_password(password)
+        if nome:
+            user.nome = nome
+    else:
+        user = User(username=username, nome=nome or username, password_hash=hash_password(password))
+        db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def verify_user_credentials(db, username: str, password: str) -> bool:
+    user = db.query(User).filter(User.username == username).first()
+    if not user or not user.password_hash:
+        return False
+    return verify_password(password, user.password_hash)
 
 
 # ── Estoque ──────────────────────────────────────────────────────────────
