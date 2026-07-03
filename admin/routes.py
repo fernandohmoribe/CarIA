@@ -1,24 +1,29 @@
 import json
+import uuid
 from collections import Counter
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 import rate_limit as _rate_limit
 from admin.auth import check_credentials, require_login
+from claude_agent import get_ai_response
 from database import (
     LEAD_STATUS_LABELS,
     MANUAL_LEAD_STATUSES,
     SessionLocal,
+    close_conversation,
     get_all_leads,
     get_available_vehicles,
+    get_conversation,
     get_conversation_history_for_lead,
     get_default_dealership,
     get_lead_by_id,
     get_lead_historico,
     get_or_create_user,
+    save_conversation,
     set_lead_status,
 )
 from dealership_config import to_local
@@ -277,3 +282,76 @@ async def sync_run(request: Request):
         return RedirectResponse(url="/admin/sync?ok=1", status_code=302)
     except Exception:
         return RedirectResponse(url="/admin/sync?ok=0", status_code=302)
+
+
+@router.get("/testar-bot")
+async def test_chat_page(request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    if "test_chat_phone" not in request.session:
+        request.session["test_chat_phone"] = f"teste-interno-{uuid.uuid4().hex[:12]}@admin"
+
+    db = SessionLocal()
+    try:
+        historico = get_conversation(db, request.session["test_chat_phone"])
+    finally:
+        db.close()
+
+    return templates.TemplateResponse("test_chat.html", {"request": request, "historico": historico})
+
+
+@router.post("/testar-bot/enviar")
+async def test_chat_send(request: Request):
+    if not request.session.get("logged_in"):
+        return JSONResponse({"error": "Sessão expirada, recarregue a página."}, status_code=401)
+
+    phone = request.session.get("test_chat_phone")
+    if not phone:
+        return JSONResponse({"error": "Sessão de teste não iniciada, recarregue a página."}, status_code=400)
+
+    body = await request.json()
+    text = (body.get("message") or "").strip()[:1000]
+    if not text:
+        return JSONResponse({"error": "Mensagem vazia."}, status_code=400)
+
+    username = request.session.get("username") or "admin"
+
+    db = SessionLocal()
+    try:
+        history = get_conversation(db, phone)
+    finally:
+        db.close()
+
+    ai_text, _lead, _photos = get_ai_response(
+        messages=history, user_message=text, phone=phone, push_name=f"Teste ({username})"
+    )
+
+    history.append({"role": "user", "content": text})
+    history.append({"role": "assistant", "content": ai_text})
+
+    db = SessionLocal()
+    try:
+        save_conversation(db, phone, history)
+    finally:
+        db.close()
+
+    return JSONResponse({"reply": ai_text})
+
+
+@router.post("/testar-bot/reiniciar")
+async def test_chat_reset(request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    phone = request.session.get("test_chat_phone")
+    if phone:
+        db = SessionLocal()
+        try:
+            close_conversation(db, phone, "reset")
+        finally:
+            db.close()
+
+    return RedirectResponse(url="/admin/testar-bot", status_code=302)

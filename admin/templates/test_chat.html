@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Testar Bot{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+    <div>
+        <h1 class="text-xl font-semibold text-zinc-100">💬 Testar o bot</h1>
+        <p class="text-zinc-500 text-sm mt-1">
+            Conversa de verdade com a IA (mesma que responde no WhatsApp) — sem precisar do WAHA
+            conectado. Salva no banco normal, então o lead aparece em
+            <a href="/admin/leads" class="text-amber-450 hover:underline">Leads</a> como qualquer outro.
+        </p>
+    </div>
+    <form method="post" action="/admin/testar-bot/reiniciar">
+        <button type="submit" class="text-xs px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition">
+            🔄 Reiniciar conversa
+        </button>
+    </form>
+</div>
+
+<div class="bg-[#111113] border border-zinc-800 rounded-2xl overflow-hidden flex flex-col" style="height: 70vh;">
+    <div id="chat" class="flex-1 overflow-y-auto p-4 space-y-2">
+        {% for msg in historico %}
+        <div class="flex {{ 'justify-end' if msg.role == 'user' else 'justify-start' }}">
+            <div class="max-w-[75%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap {{ 'bg-amber-450 text-black' if msg.role == 'user' else 'bg-zinc-800 text-zinc-200' }}">{{ msg.content }}</div>
+        </div>
+        {% else %}
+        <p class="text-zinc-600 text-sm text-center mt-8">Sem mensagens ainda — manda um "oi" pra começar.</p>
+        {% endfor %}
+    </div>
+    <form id="form" class="flex gap-2 p-3 border-t border-zinc-800">
+        <input id="input" class="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm rounded-full px-4 py-2"
+               placeholder="Digite como se fosse um cliente..." autocomplete="off">
+        <button type="submit" id="btn" class="text-sm px-4 py-2 rounded-full bg-amber-450 text-black font-medium hover:opacity-90">Enviar</button>
+    </form>
+</div>
+
+<script>
+    const chat = document.getElementById('chat');
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const btn = document.getElementById('btn');
+
+    function addMsg(text, role) {
+        const wrap = document.createElement('div');
+        wrap.className = 'flex ' + (role === 'user' ? 'justify-end' : 'justify-start');
+        const bubble = document.createElement('div');
+        bubble.className = 'max-w-[75%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ' +
+            (role === 'user' ? 'bg-amber-450 text-black' : 'bg-zinc-800 text-zinc-200');
+        bubble.textContent = text;
+        wrap.appendChild(bubble);
+        chat.appendChild(wrap);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+        addMsg(text, 'user');
+        input.value = '';
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch('/admin/testar-bot/enviar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: text}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                addMsg(data.error || 'Erro ao enviar.', 'assistant');
+            } else {
+                addMsg(data.reply, 'assistant');
+            }
+        } catch (err) {
+            addMsg('Erro de conexão.', 'assistant');
+        }
+        btn.disabled = false;
+        input.focus();
+    });
+
+    chat.scrollTop = chat.scrollHeight;
+</script>
+{% endblock %}

@@ -19,3 +19,18 @@ os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret-key")
 # Scripts manuais que batem na IA de verdade (chat_manual.py, scenarios_manual.py,
 # eval_prompt.py) não usam prefixo test_ de propósito — ver CLAUDE.md — então o pytest nem
 # tenta coletar nada deles, sem precisar de collect_ignore aqui.
+
+import pytest  # noqa: E402  (depois da configuração de ambiente acima, de propósito)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """rate_limit.py guarda estado em dicts a nível de módulo — sem isso, testes que fazem
+    login repetidas vezes (ex: vários arquivos logando como "admin") acumulam tentativas ao
+    longo da suíte inteira e acabam esbarrando no limite sem ter nada a ver uns com os outros,
+    já que o TestClient sempre reporta o mesmo IP fake ("testclient")."""
+    import rate_limit
+
+    rate_limit._timestamps.clear()
+    rate_limit._blocked.clear()
+    yield
