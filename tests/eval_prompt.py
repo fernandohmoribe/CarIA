@@ -131,6 +131,9 @@ def lists_many_vehicles(text, min_count=10):
     # heurística: conta padrões "(AAAA)" de ano — proxy pra "quantos veículos apareceram na lista"
     return len(re.findall(r"\(\d{4}\)", text)) >= min_count
 
+def no_price_shown(text):
+    return "R$" not in text
+
 def short_reply(text):
     return len(text) < 400
 
@@ -169,6 +172,15 @@ def no_retry_narration(text):
 WELCOME = [
     {"role": "user", "content": "Olá"},
     {"role": "assistant", "content": "Olá! 😊 Seja bem-vindo(a)! Em qual veículo do nosso estoque você tem interesse?"},
+]
+
+# Cadastro básico já capturado (nome, e-mail, telefone, urgência) — passo 1 do processo de
+# atendimento concluído. Usado nas buscas de estoque (categoria 2): sem isso, a IA pede
+# cadastro antes de mostrar qualquer veículo (comportamento correto do passo 1 pra pedidos
+# genéricos), o que mascarava se a busca/listagem em si estava certa.
+CADASTRO_FEITO = WELCOME + [
+    {"role": "user", "content": "Eduardo, eduardo@email.com, (44) 98888-0003, esse mês"},
+    {"role": "assistant", "content": "Perfeito, Eduardo! Você já sabe qual veículo quer, ou prefere ver as opções do estoque?"},
 ]
 
 INTERESSE_RAM = WELCOME + [
@@ -261,28 +273,28 @@ CASES = [
     {
         "id": 5, "cat": 2, "cat_nome": "Busca de estoque",
         "nome": "Busca por marca — BMW",
-        "history": WELCOME, "input": "Vocês têm BMW no estoque?", "name": "",
+        "history": CADASTRO_FEITO, "input": "Vocês têm BMW no estoque?", "name": "",
         "criterio": "Menciona algum modelo BMW real (528i, X5 ou X6)",
         "check": lambda t, l: any(k in t for k in ["528i", "X5", "X6", "R 18"]),
     },
     {
         "id": 6, "cat": 2, "cat_nome": "Busca de estoque",
         "nome": "Busca por faixa de preço",
-        "history": WELCOME, "input": "Tem algum carro até 120 mil reais?", "name": "",
+        "history": CADASTRO_FEITO, "input": "Tem algum carro até 120 mil reais?", "name": "",
         "criterio": "Cita um veículo dentro dessa faixa (Dakota, T-Cross, R18 ou 528i)",
         "check": lambda t, l: any(k in t for k in ["Dakota", "T-Cross", "T-CROSS", "R 18", "528i"]),
     },
     {
         "id": 7, "cat": 2, "cat_nome": "Busca de estoque",
         "nome": "Busca por carroceria — SUV",
-        "history": WELCOME, "input": "Quais SUVs vocês têm?", "name": "",
+        "history": CADASTRO_FEITO, "input": "Quais SUVs vocês têm?", "name": "",
         "criterio": "Cita algum SUV real (X5, GLB, GLC, Cayenne, Macan, T-Cross)",
         "check": lambda t, l: any(k in t for k in ["X5", "GLB", "GLC", "Cayenne", "Macan", "T-Cross", "T-CROSS"]),
     },
     {
         "id": 8, "cat": 2, "cat_nome": "Busca de estoque",
         "nome": "Busca picape",
-        "history": WELCOME, "input": "Procuro uma picape", "name": "",
+        "history": CADASTRO_FEITO, "input": "Procuro uma picape", "name": "",
         "criterio": "Cita a Dakota ou a Rampage",
         "check": lambda t, l: any(k in t for k in ["Dakota", "Rampage"]),
     },
@@ -295,10 +307,11 @@ CASES = [
     },
     {
         "id": 53, "cat": 2, "cat_nome": "Busca de estoque",
-        "nome": "Pedido genérico → lista TODO o estoque, não só um recorte",
-        "history": WELCOME, "input": "Oi, o que vocês têm no estoque?", "name": "",
-        "criterio": "Lista pelo menos 10 veículos (não trava em ~8 nem mostra só 3-4)",
-        "check": lambda t, l: lists_many_vehicles(t, min_count=10),
+        "nome": "Pedido genérico (cadastro já feito) → lista TODO o estoque, sem preço",
+        "history": CADASTRO_FEITO,
+        "input": "o que vocês têm no estoque?", "name": "",
+        "criterio": "Lista pelo menos 10 veículos (não trava em ~8 nem mostra só 3-4) e SEM preço",
+        "check": lambda t, l: lists_many_vehicles(t, min_count=10) and no_price_shown(t),
     },
 
     # ════════════════════════════════════════════════════════════════════════
