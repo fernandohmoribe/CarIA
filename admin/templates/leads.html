@@ -2,52 +2,136 @@
 {% block title %}Leads{% endblock %}
 {% block content %}
 
-<div class="flex items-center justify-between mb-6">
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
     <h1 class="text-2xl font-semibold text-zinc-100">Leads</h1>
-    <div class="flex gap-2 text-xs">
-        <a href="/admin/leads" class="px-3 py-1.5 rounded-full border {{ 'border-amber-450 text-amber-450' if not filtro_status and not filtro_prioridade else 'border-zinc-700 text-zinc-400' }}">Todos</a>
-        <a href="/admin/leads?prioridade=quente" class="px-3 py-1.5 rounded-full border {{ 'border-amber-450 text-amber-450' if filtro_prioridade == 'quente' else 'border-zinc-700 text-zinc-400' }}">🔥 Quentes</a>
-        {% for s in ["novo", "qualificado", "agendado", "transferido", "convertido"] %}
-        <a href="/admin/leads?status={{ s }}" class="px-3 py-1.5 rounded-full border {{ 'border-amber-450 text-amber-450' if filtro_status == s else 'border-zinc-700 text-zinc-400' }}">{{ s|capitalize }}</a>
-        {% endfor %}
+    <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex gap-1 text-xs bg-[#111113] border border-zinc-800 rounded-full p-1">
+            <a href="/admin/leads?view=lista{{ '&prioridade=' + filtro_prioridade if filtro_prioridade else '' }}"
+               class="px-3 py-1.5 rounded-full {{ 'bg-zinc-800 text-amber-450' if view != 'board' else 'text-zinc-500' }}">Lista</a>
+            <a href="/admin/leads?view=board{{ '&prioridade=' + filtro_prioridade if filtro_prioridade else '' }}"
+               class="px-3 py-1.5 rounded-full {{ 'bg-zinc-800 text-amber-450' if view == 'board' else 'text-zinc-500' }}">Board</a>
+        </div>
+        <div class="flex gap-2 text-xs">
+            <a href="/admin/leads?view={{ view }}" class="px-3 py-1.5 rounded-full border {{ 'border-amber-450 text-amber-450' if not filtro_status and not filtro_prioridade else 'border-zinc-700 text-zinc-400' }}">Todos</a>
+            <a href="/admin/leads?view={{ view }}&prioridade=quente" class="px-3 py-1.5 rounded-full border {{ 'border-amber-450 text-amber-450' if filtro_prioridade == 'quente' else 'border-zinc-700 text-zinc-400' }}">🔥 Quentes</a>
+            {% if view != "board" %}
+            {% for s in ["novo", "qualificado", "agendado", "transferido", "convertido"] %}
+            <a href="/admin/leads?status={{ s }}" class="px-3 py-1.5 rounded-full border {{ 'border-amber-450 text-amber-450' if filtro_status == s else 'border-zinc-700 text-zinc-400' }}">{{ s|capitalize }}</a>
+            {% endfor %}
+            {% endif %}
+        </div>
+        <form method="get" action="/admin/leads" id="q-form" class="flex items-center">
+            <input type="hidden" name="view" value="{{ view }}">
+            {% if filtro_status %}<input type="hidden" name="status" value="{{ filtro_status }}">{% endif %}
+            {% if filtro_prioridade %}<input type="hidden" name="prioridade" value="{{ filtro_prioridade }}">{% endif %}
+            <input type="text" name="q" id="q-input" value="{{ filtro_q }}" placeholder="Buscar por nome ou veículo..."
+                   autocomplete="off"
+                   class="text-xs bg-[#111113] border border-zinc-800 rounded-full px-4 py-1.5 w-56 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-450">
+        </form>
     </div>
 </div>
 
-<div class="bg-[#111113] border border-zinc-800 rounded-2xl overflow-hidden">
-    <table class="w-full text-sm">
-        <thead class="bg-[#1a1a1d] text-zinc-500 text-xs uppercase">
-            <tr>
-                <th class="text-left px-5 py-3">Cliente</th>
-                <th class="text-left px-5 py-3">Veículo de interesse</th>
-                <th class="text-left px-5 py-3">Status</th>
-                <th class="text-left px-5 py-3">Prioridade</th>
-                <th class="text-left px-5 py-3">Atualizado</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for lead in leads %}
-            <tr class="border-t border-zinc-900 hover:bg-zinc-900/50 cursor-pointer" onclick="window.location='/admin/leads/{{ lead.id }}'">
-                <td class="px-5 py-3">
-                    <div class="text-zinc-200">{{ lead.nome or "Sem nome" }}</div>
-                    <div class="text-zinc-500 text-xs">{{ lead.telefone or lead.phone_number }}</div>
-                </td>
-                <td class="px-5 py-3 text-zinc-300">{{ lead.veiculo_interesse or "—" }}</td>
-                <td class="px-5 py-3">
-                    <span class="text-xs px-2 py-1 rounded-full bg-zinc-800 text-zinc-300">{{ lead.status }}</span>
-                </td>
-                <td class="px-5 py-3">
-                    {% if lead.prioridade == "quente" %}
-                    <span class="text-xs px-2 py-1 rounded-full bg-orange-950 text-orange-400">🔥 quente</span>
-                    {% else %}
-                    <span class="text-xs text-zinc-600">normal</span>
-                    {% endif %}
-                </td>
-                <td class="px-5 py-3 text-zinc-500 text-xs">{{ lead.updated_at | local_time("%d/%m %H:%M") }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="5" class="px-5 py-8 text-center text-zinc-600">Nenhum lead encontrado.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div id="results" class="{{ 'full-bleed px-6' if view == 'board' else '' }}">
+    {% include "_leads_results.html" %}
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+const RESULTS_URL = "/admin/leads/resultados";
+const CURRENT_VIEW = {{ view|tojson }};
+const CURRENT_STATUS = {{ (filtro_status or "")|tojson }};
+const CURRENT_PRIORIDADE = {{ (filtro_prioridade or "")|tojson }};
+
+// Depois de mover um card (drag bem-sucedido ou revertido), sincroniza o placeholder de
+// "coluna vazia" e o contador do cabeçalho com o que está de fato na coluna agora — sem isso,
+// o card muda de coluna mas o texto "Nenhum lead aqui" e o número do badge ficam com o valor
+// de quando a página (ou o último fetch) carregou.
+function syncColumnUI(col) {
+    const cards = col.querySelectorAll('.lead-card');
+    let placeholder = col.querySelector('.empty-placeholder');
+    if (cards.length === 0 && !placeholder) {
+        placeholder = document.createElement('div');
+        placeholder.className = 'empty-placeholder text-xs text-zinc-700 text-center py-6';
+        placeholder.textContent = 'Nenhum lead aqui';
+        col.appendChild(placeholder);
+    } else if (cards.length > 0 && placeholder) {
+        placeholder.remove();
+    }
+    const badge = document.querySelector(`.board-count[data-status="${col.dataset.status}"]`);
+    if (badge) badge.textContent = cards.length;
+}
+
+// Clicar no card abre o lead — mas só quando foi um clique de verdade, não a soltura de um
+// drag (o Sortable move o elemento via mousedown+mousemove+mouseup, o que o navegador às vezes
+// ainda interpreta como um "click" logo depois de soltar). suppressClick fica true durante o
+// drag e por um instante depois do drop, pra esse clique fantasma não navegar.
+let suppressClick = false;
+
+// Re-liga clique e Sortable nos cards/colunas atuais dentro de #results — precisa rodar de
+// novo toda vez que o conteúdo é trocado via fetch (os elementos antigos, com os listeners
+// antigos, saem do DOM junto com o innerHTML antigo).
+function initBoard() {
+    document.querySelectorAll('#results .lead-card').forEach((card) => {
+        card.addEventListener('click', () => {
+            if (suppressClick) return;
+            window.location = `/admin/leads/${card.dataset.leadId}`;
+        });
+    });
+
+    document.querySelectorAll('#results .board-column').forEach((col) => {
+        new Sortable(col, {
+            group: 'leads',
+            animation: 150,
+            ghostClass: 'opacity-40',
+            onStart: () => { suppressClick = true; },
+            onEnd: async (evt) => {
+                const card = evt.item;
+                const fromCol = evt.from;
+                const toCol = evt.to;
+                const newStatus = toCol.dataset.status;
+                const oldStatus = fromCol.dataset.status;
+                setTimeout(() => { suppressClick = false; }, 200);
+                if (newStatus === oldStatus) return;
+                const leadId = card.dataset.leadId;
+                try {
+                    const resp = await fetch(`/admin/leads/${leadId}/status/mover`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: newStatus }),
+                    });
+                    if (!resp.ok) throw new Error('falhou');
+                    syncColumnUI(fromCol);
+                    syncColumnUI(toCol);
+                } catch (err) {
+                    alert('Não foi possível mover o lead. A página vai recarregar.');
+                    location.reload();
+                }
+            },
+        });
+    });
+}
+
+initBoard();
+
+// Filtra enquanto digita (debounce) sem apertar Enter e sem recarregar a página inteira — só
+// busca o resultado via fetch e troca o conteúdo de #results. Recarregar a página a cada letra
+// destrói e recria o campo de busca no meio da digitação, "comendo" as teclas do que o usuário
+// já tinha digitado enquanto o navegador ainda estava trocando de página.
+(() => {
+    const input = document.getElementById('q-input');
+    let timer = null;
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+            const params = new URLSearchParams({ view: CURRENT_VIEW, q: input.value });
+            if (CURRENT_STATUS) params.set('status', CURRENT_STATUS);
+            if (CURRENT_PRIORIDADE) params.set('prioridade', CURRENT_PRIORIDADE);
+            const resp = await fetch(`${RESULTS_URL}?${params.toString()}`);
+            if (!resp.ok) return;
+            document.getElementById('results').innerHTML = await resp.text();
+            initBoard();
+        }, 400);
+    });
+})();
+</script>
 {% endblock %}

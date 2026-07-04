@@ -170,23 +170,78 @@ async def vehicles_page(request: Request):
         db.close()
 
 
+def _filter_leads(db, status: str = None, prioridade: str = None, q: str = None) -> list:
+    dealership = get_default_dealership(db)
+    leads = get_all_leads(db, dealership.id if dealership else None)
+    if status:
+        leads = [lead for lead in leads if lead.status == status]
+    if prioridade:
+        leads = [lead for lead in leads if lead.prioridade == prioridade]
+    if q:
+        termo = q.strip().lower()
+        leads = [
+            lead for lead in leads
+            if termo in (lead.nome or "").lower() or termo in (lead.veiculo_interesse or "").lower()
+        ]
+    return leads
+
+
+def _board_columns(leads: list) -> list:
+    # Board só mostra os status que o vendedor pode setar manualmente (MANUAL_LEAD_STATUSES) —
+    # "novo" e "qualificado" são definidos só pela IA, não fazem sentido como coluna arrastável.
+    return [
+        {"status": s, "label": LEAD_STATUS_LABELS[s], "leads": [l for l in leads if l.status == s]}
+        for s in MANUAL_LEAD_STATUSES
+    ]
+
+
 @router.get("/leads")
-async def leads_page(request: Request, status: str = None, prioridade: str = None):
+async def leads_page(
+    request: Request, status: str = None, prioridade: str = None, view: str = "lista", q: str = None
+):
     redirect = require_login(request)
     if redirect:
         return redirect
 
     db = SessionLocal()
     try:
-        dealership = get_default_dealership(db)
-        leads = get_all_leads(db, dealership.id if dealership else None)
-        if status:
-            leads = [lead for lead in leads if lead.status == status]
-        if prioridade:
-            leads = [lead for lead in leads if lead.prioridade == prioridade]
+        leads = _filter_leads(db, status, prioridade, q)
         return templates.TemplateResponse(
             "leads.html",
-            {"request": request, "leads": leads, "filtro_status": status, "filtro_prioridade": prioridade},
+            {
+                "request": request,
+                "leads": leads,
+                "filtro_status": status,
+                "filtro_prioridade": prioridade,
+                "filtro_q": q or "",
+                "view": "board" if view == "board" else "lista",
+                "board_columns": _board_columns(leads),
+            },
+        )
+    finally:
+        db.close()
+
+
+@router.get("/leads/resultados")
+async def leads_resultados(
+    request: Request, status: str = None, prioridade: str = None, view: str = "lista", q: str = None
+):
+    """Fragmento HTML (só a tabela/board, sem o layout da página) usado pelo filtro em tempo
+    real de leads.html via fetch — ver script no template."""
+    if not request.session.get("logged_in"):
+        return JSONResponse({"error": "Sessão expirada, recarregue a página."}, status_code=401)
+
+    db = SessionLocal()
+    try:
+        leads = _filter_leads(db, status, prioridade, q)
+        return templates.TemplateResponse(
+            "_leads_results.html",
+            {
+                "request": request,
+                "leads": leads,
+                "view": "board" if view == "board" else "lista",
+                "board_columns": _board_columns(leads),
+            },
         )
     finally:
         db.close()
@@ -250,6 +305,32 @@ async def update_lead_status(request: Request, lead_id: int, status: str = Form(
         db.close()
 
     return RedirectResponse(url=f"/admin/leads/{lead_id}", status_code=302)
+
+
+@router.post("/leads/{lead_id}/status/mover")
+async def move_lead_status(request: Request, lead_id: int):
+    """Endpoint JSON usado pelo drag-and-drop do board de leads (ver leads.html) — diferente
+    de update_lead_status acima, que é form-post com redirect (usado pelo select da tela de
+    detalhe do lead)."""
+    if not request.session.get("logged_in"):
+        return JSONResponse({"error": "Sessão expirada, recarregue a página."}, status_code=401)
+
+    body = await request.json()
+    status = (body.get("status") or "").strip()
+    if status not in MANUAL_LEAD_STATUSES:
+        return JSONResponse({"error": "Status inválido."}, status_code=400)
+
+    db = SessionLocal()
+    try:
+        lead = get_lead_by_id(db, lead_id)
+        if not lead:
+            return JSONResponse({"error": "Lead não encontrado."}, status_code=404)
+        username = request.session.get("username") or "admin"
+        user = get_or_create_user(db, username)
+        set_lead_status(db, lead, status, user_id=user.id)
+        return JSONResponse({"ok": True})
+    finally:
+        db.close()
 
 
 @router.get("/sync")

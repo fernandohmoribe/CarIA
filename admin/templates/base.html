@@ -20,6 +20,9 @@
         body { background: #0a0a0c; }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+        /* Escapa do max-w-7xl mx-auto do <main> — usado pelo board de leads, que precisa da
+           largura inteira da tela pra caber as colunas sem rolagem horizontal. */
+        .full-bleed { width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; }
     </style>
 </head>
 <body class="bg-[#0a0a0c] text-zinc-200 min-h-screen">
