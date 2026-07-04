@@ -53,6 +53,19 @@
         chat.scrollTop = chat.scrollHeight;
     }
 
+    function addPhotos(urls) {
+        const wrap = document.createElement('div');
+        wrap.className = 'flex justify-start flex-wrap gap-2 max-w-[75%]';
+        for (const url of urls) {
+            const img = document.createElement('img');
+            img.src = url;
+            img.className = 'rounded-lg w-32 h-24 object-cover';
+            wrap.appendChild(img);
+        }
+        chat.appendChild(wrap);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = input.value.trim();
@@ -72,6 +85,7 @@
                 addMsg(data.error || 'Erro ao enviar.', 'assistant');
             } else {
                 addMsg(data.reply, 'assistant');
+                if (data.photos && data.photos.length) addPhotos(data.photos);
             }
         } catch (err) {
             addMsg('Erro de conexão.', 'assistant');

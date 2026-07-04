@@ -20,6 +20,7 @@ from database import (
     get_conversation,
     get_conversation_history_for_lead,
     get_default_dealership,
+    get_latest_lead,
     get_lead_by_id,
     get_lead_historico,
     get_or_create_user,
@@ -324,7 +325,7 @@ async def test_chat_send(request: Request):
     finally:
         db.close()
 
-    ai_text, _lead, _photos = get_ai_response(
+    ai_text, _lead, photos = get_ai_response(
         messages=history, user_message=text, phone=phone, push_name=f"Teste ({username})"
     )
 
@@ -333,11 +334,22 @@ async def test_chat_send(request: Request):
 
     db = SessionLocal()
     try:
-        save_conversation(db, phone, history)
+        # mesma lógica do main.py:_sync_process — sem isso, a conversa fica sem lead_id e
+        # não aparece no histórico da tela do lead (get_conversation_history_for_lead).
+        dealership = get_default_dealership(db)
+        lead = get_latest_lead(db, dealership.id, phone) if dealership else None
+        save_conversation(db, phone, history, lead_id=lead.id if lead else None)
     finally:
         db.close()
 
-    return JSONResponse({"reply": ai_text})
+    # No WhatsApp real isso vai pelo WAHA (main.py:send_vehicle_photos) — aqui, como é uma
+    # página web, mostra a imagem direto na tela em vez de simular um envio que não existe.
+    photo_urls = [
+        _img_src(foto.get("local_path"), foto.get("url"), 600, 450)
+        for foto in (photos.get("fotos", []) if photos else [])
+    ]
+
+    return JSONResponse({"reply": ai_text, "photos": photo_urls})
 
 
 @router.post("/testar-bot/reiniciar")
@@ -353,5 +365,11 @@ async def test_chat_reset(request: Request):
             close_conversation(db, phone, "reset")
         finally:
             db.close()
+
+    # gera um telefone novo — cada reinício simula um cliente diferente. Sem isso, "reiniciar"
+    # só limpava as mensagens mas mantinha o mesmo telefone, então testar como "João" depois de
+    # "Fernando" atualizava o MESMO lead (achava o lead existente por telefone e sobrescrevia o
+    # nome), em vez de criar um lead novo pra cada teste.
+    request.session["test_chat_phone"] = f"teste-interno-{uuid.uuid4().hex[:12]}@admin"
 
     return RedirectResponse(url="/admin/testar-bot", status_code=302)
