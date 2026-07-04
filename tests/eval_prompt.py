@@ -9,6 +9,8 @@ Uso:
     python tests/eval_prompt.py --cat 3     # roda só a categoria 3
 """
 
+from __future__ import annotations
+
 import os
 import re
 import sys
@@ -20,6 +22,7 @@ sys.path.insert(0, str(ROOT))
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{ROOT}/db/cariar_bot_eval.db")
 
 from claude_agent import get_ai_response
+from database import SessionLocal, Lead, lead_to_dict
 
 # ── Cores ───────────────────────────────────────────────────────────────────────
 G = "\033[32m"; R = "\033[31m"; Y = "\033[33m"; C = "\033[36m"
@@ -124,6 +127,10 @@ def enumerates_no_tools(text):
         "buscar_veiculos", "detalhes_veiculo", "criar_ou_atualizar_lead", "enviar_fotos_veiculo",
     ])
 
+def lists_many_vehicles(text, min_count=10):
+    # heurística: conta padrões "(AAAA)" de ano — proxy pra "quantos veículos apareceram na lista"
+    return len(re.findall(r"\(\d{4}\)", text)) >= min_count
+
 def short_reply(text):
     return len(text) < 400
 
@@ -141,6 +148,20 @@ def lead_priority_quente(lead):
 
 def lead_status(lead, status):
     return lead is not None and lead.get("status") == status
+
+def has_vehicle_interest(lead, *terms):
+    if lead is None:
+        return False
+    text = " ".join(str(lead.get(f, "")) for f in ("veiculo_interesse", "observacoes")).lower()
+    return all(t.lower() in text for t in terms)
+
+def no_retry_narration(text):
+    lower = text.lower()
+    markers = [
+        "achei estranho", "tentar de novo", "tentar buscar de novo", "outra abordagem",
+        "tentar novamente", "de outra forma", "outra tentativa", "tentar de outro jeito",
+    ]
+    return not any(m in lower for m in markers)
 
 
 # ── Blocos de histórico reutilizáveis ──────────────────────────────────────────
@@ -163,6 +184,38 @@ LEAD_CRIADO_RAM = INTERESSE_RAM + [
 QUALIFICADO = LEAD_CRIADO_RAM + [
     {"role": "user", "content": "Não, já vi tudo que precisava"},
     {"role": "assistant", "content": "Que bom! Você pretende comprar à vista ou financiado?"},
+]
+
+# Conversa mais longa (10+ turnos) — reproduz o cenário real que expôs o bug: a IA "narrava"
+# confirmações (anotado/vou anotar) sem de fato chamar a tool, algo que os casos curtos acima
+# não pegavam.
+CONVERSA_LONGA_FECHAMENTO = WELCOME + [
+    {"role": "user", "content": "Marina Silva, marina@email.com, (44) 98888-1234, em uma semana"},
+    {"role": "assistant", "content": "Ótimo, Marina! Anotado. Você já sabe qual veículo quer, ou prefere ver as opções do estoque?"},
+    {"role": "user", "content": "quero ver o estoque"},
+    {"role": "assistant", "content": "Aqui está nosso estoque:\n\n**Porsche**\n- Macan\n\n**BMW**\n- 528i M Sport\n\nAlgum despertou seu interesse?"},
+    {"role": "user", "content": "o macan"},
+    {"role": "assistant", "content": "Ótima escolha! O Porsche Macan é um SUV muito completo — R$ 339.900, 2020, automático. Tem alguma dúvida?"},
+    {"role": "user", "content": "ele tem teto solar?"},
+    {"role": "assistant", "content": "Essa informação específica eu não tenho aqui comigo agora, mas vou anotar sua pergunta pro vendedor confirmar. Quer ver fotos do Macan?"},
+    {"role": "user", "content": "sim"},
+    {"role": "assistant", "content": "Te mandei as fotos! 📸 O que achou?"},
+    {"role": "user", "content": "gostei bastante"},
+    {"role": "assistant", "content": "Que ótimo! Você tem interesse em agendar um test-drive?"},
+    {"role": "user", "content": "sim, sabado de manha"},
+    {"role": "assistant", "content": "Perfeito! Anotei sábado de manhã. Vou repassar pro vendedor confirmar o horário. Já sabe se pretende financiar ou pagar à vista?"},
+]
+
+# Reproduz a conversa real da Maria que expôs dois bugs: (1) cliente menciona um veículo novo
+# (Audi A4) na mesma mensagem em que pede pra ver outra marca (BMW) — só a busca era chamada,
+# o interesse no Audi nunca ia pro lead; (2) ao buscar detalhes do veículo escolhido, a IA às
+# vezes narrava a própria tentativa/erro interno ("achei estranho, vou tentar de novo") pro
+# cliente, em vez de tentar de novo em silêncio.
+INTERESSE_AUDI_SEM_ESTOQUE = WELCOME + [
+    {"role": "user", "content": "Maria, maria@gmail.com, (44) 98888-0002, em 10 dias"},
+    {"role": "assistant", "content": "Perfeito, Maria! Qual é o Audi específico que você procura (modelo, ano)?"},
+    {"role": "user", "content": "qual voce tem?"},
+    {"role": "assistant", "content": "No momento não temos nenhum Audi disponível no estoque. Posso anotar seu interesse pro nosso time verificar — qual Audi você tinha em mente?"},
 ]
 
 # ── Casos de avaliação ───────────────────────────────────────────────────────
@@ -239,6 +292,13 @@ CASES = [
         "history": WELCOME, "input": "Tem alguma Ferrari por 30 mil reais?", "name": "",
         "criterio": "Admite que não tem, sem inventar um resultado",
         "check": lambda t, l: admits_unknown(t) or "não" in t.lower(),
+    },
+    {
+        "id": 53, "cat": 2, "cat_nome": "Busca de estoque",
+        "nome": "Pedido genérico → lista TODO o estoque, não só um recorte",
+        "history": WELCOME, "input": "Oi, o que vocês têm no estoque?", "name": "",
+        "criterio": "Lista pelo menos 10 veículos (não trava em ~8 nem mostra só 3-4)",
+        "check": lambda t, l: lists_many_vehicles(t, min_count=10),
     },
 
     # ════════════════════════════════════════════════════════════════════════
@@ -381,6 +441,40 @@ CASES = [
         "history": QUALIFICADO, "input": "Financiado, tenho um HB20 2021 pra trocar, quero decidir essa semana", "name": "",
         "criterio": "Lead tem resumo_executivo preenchido",
         "check": lambda t, l: lead_has_field(l, "resumo_executivo"),
+    },
+    {
+        "id": 54, "cat": 6, "cat_nome": "Qualificação",
+        "nome": "Conversa longa (10+ turnos) + fechamento com vários dados juntos → tool é chamada de verdade",
+        "history": CONVERSA_LONGA_FECHAMENTO,
+        "input": "quero financiar, e tenho um Corolla 2019 pra dar de entrada",
+        "criterio": "forma_pagamento E troca ficam salvos no lead (não só a IA dizendo 'anotado' em texto sem chamar a tool)",
+        "check": lambda t, l: lead_has_field(l, "forma_pagamento") and (lead_has_field(l, "tem_troca") or lead_has_field(l, "veiculo_troca_desc")),
+    },
+    {
+        "id": 55, "cat": 6, "cat_nome": "Qualificação",
+        "nome": "Mensagem mistura veículo novo + pedido de outra marca → chama as DUAS tools",
+        "history": INTERESSE_AUDI_SEM_ESTOQUE,
+        "input": "quero um audi a4, voce tem bmw?", "name": "",
+        "criterio": "Lead registra interesse no Audi A4 (mesmo sem estar no estoque) E a resposta traz os BMW do estoque",
+        "check": lambda t, l: has_vehicle_interest(l, "audi", "a4") and mentions_vehicle_terms(t),
+    },
+    {
+        "id": 56, "cat": 6, "cat_nome": "Qualificação",
+        "nome": "Detalhe de veículo nunca narra tentativa/erro interno da busca pro cliente",
+        "history": INTERESSE_AUDI_SEM_ESTOQUE + [
+            {"role": "user", "content": "quero um audi a4, voce tem bmw?"},
+            {
+                "role": "assistant",
+                "content": (
+                    "Anotado seu interesse no Audi A4! Aqui estão os BMW disponíveis: R 18 PURE "
+                    "(2024), 528i M Sport (2016), X5 xDrive 30D (2018), X6 X Drive 35i (2018), "
+                    "X5 xDrive45e (2023). Algum te interessa?"
+                ),
+            },
+        ],
+        "input": "X5 xDrive45e (2023)", "name": "",
+        "criterio": "Resposta não narra tentativa/erro de busca (ex: 'achei estranho', 'vou tentar de novo')",
+        "check": lambda t, l: no_retry_narration(t),
     },
 
     # ════════════════════════════════════════════════════════════════════════
@@ -616,15 +710,32 @@ CASES = [
 
 # ── Runner ──────────────────────────────────────────────────────────────────────
 
+def _fetch_lead(phone: str) -> dict | None:
+    """Estado real do lead no banco pro telefone do caso.
+
+    Não usar o retorno de get_ai_response (lead_to_notify) pra checar captura: ele só vem
+    preenchido quando vale notificar o vendedor (novo lead, mudou status, virou quente...),
+    então numa segunda rodada com o mesmo telefone dá falso negativo mesmo com a tool tendo
+    salvo tudo certo no banco.
+    """
+    db = SessionLocal()
+    try:
+        lead = db.query(Lead).filter(Lead.phone_number == phone).first()
+        return lead_to_dict(lead) if lead else None
+    finally:
+        db.close()
+
+
 def run_case(case: dict) -> dict:
     try:
         phone = f"5544100{case['id']:04d}@c.us"
-        clean_text, lead = get_ai_response(
+        clean_text, _lead_to_notify, _photos = get_ai_response(
             messages=case["history"],
             user_message=case["input"],
             phone=phone,
             push_name=case.get("name", ""),
         )
+        lead = _fetch_lead(phone)
         ok = case["check"](clean_text, lead)
         return {"text": clean_text, "lead": lead, "ok": ok, "error": None}
     except Exception as e:

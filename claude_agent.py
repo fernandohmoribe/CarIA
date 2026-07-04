@@ -10,7 +10,7 @@ from database import SessionLocal, get_default_dealership, get_or_create_lead, l
 from dealership_config import BUSINESS_TZ, SYSTEM_PROMPT
 
 MODEL = "claude-haiku-4-5"
-MAX_TOKENS = 700
+MAX_TOKENS = 1300
 MAX_HISTORY_MESSAGES = 20
 MAX_TOOL_ITERATIONS = 6
 
@@ -118,7 +118,10 @@ def _handle_photos_tool(tool_input: dict, dealership_id: int) -> dict:
         "veiculo": data["veiculo"],
         "fotos_enviadas": len(data["fotos"]),
         # chave privada, removida antes de mandar o resultado pro Claude — carrega os
-        # caminhos reais só pra camada de envio (main.py), nunca pro texto da conversa.
+        # caminhos reais só pra camada de envio (main.py/admin), nunca pro texto da conversa.
+        # Regra do projeto: a IA NUNCA recebe imagem (nem base64, nem bloco de imagem da API) —
+        # só o nome do arquivo/contagem em texto. Enviar imagem pro modelo custa MUITO mais
+        # tokens (visão) do que texto — ver CLAUDE.md.
         "_fotos": data["fotos"],
     }
 
