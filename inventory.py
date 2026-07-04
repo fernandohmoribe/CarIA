@@ -82,6 +82,9 @@ def _summary(v: Vehicle) -> dict:
         "cambio": v.transmission,
         "combustivel": v.fuel,
         "cor": v.color,
+        # string de URL solta — NUNCA vira bloco de imagem/base64 pra API (custo de visão).
+        # A IA só sabe que existe uma foto de capa, não "vê" ela. Fotos de verdade vão pela
+        # tool enviar_fotos_veiculo (ver CLAUDE.md).
         "foto_capa": v.cover_image_url,
     }
 
@@ -107,7 +110,7 @@ def buscar_veiculos(
     carroceria: str = None,
     cambio: str = None,
     combustivel: str = None,
-    limit: int = 8,
+    limit: int = 50,
 ) -> list:
     from sqlalchemy import or_
 

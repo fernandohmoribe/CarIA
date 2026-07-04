@@ -33,3 +33,16 @@ Comportamento da IA (prompt, tool use) só é validado de verdade pelos scripts 
 2 — não dá pra automatizar isso de forma determinística e barata. Mas toda a lógica de **código**
 ao redor da IA (dispatch de tools, persistência de lead, silenciar o bot, histórico de status,
 etc) é testável e testada na categoria 1.
+
+## Custo — a IA nunca recebe imagem
+
+**A IA (chamadas pra `claude_agent.get_ai_response`) nunca recebe conteúdo de imagem — nem bloco
+de imagem da API, nem base64, nem URL tratada como visão.** Imagem de veículo é só texto (nome do
+arquivo, contagem, URL como string solta) — enviar imagem de verdade pro modelo custa muito mais
+tokens (visão) do que texto. Isso vale pra qualquer feature nova que envolva foto:
+
+- A tool `enviar_fotos_veiculo` retorna só `{"veiculo": ..., "fotos_enviadas": N}` pro Claude — os
+  caminhos reais (`_fotos`) são removidos antes do `tool_result` ir pra API, e só a camada de
+  envio (`main.py`/`admin/routes.py`) usa esse dado, pra mandar via WAHA ou mostrar na tela.
+- Se algum dia quiser "a IA descrever uma foto" ou algo do tipo, isso É enviar imagem pro modelo —
+  para e confirma com o usuário antes de implementar, não é uma decisão a tomar sozinho.
