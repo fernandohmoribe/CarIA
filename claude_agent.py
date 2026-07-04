@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Tuple
 
 import anthropic
@@ -45,7 +45,29 @@ LEAD_TOOL = {
             "urgencia_compra": {"type": "string"},
             "uso_pretendido": {"type": "string"},
             "como_conheceu": {"type": "string"},
-            "preferencia_contato": {"type": "string", "description": "Dia/período preferido pra visita ou test-drive"},
+            "dia_visita": {
+                "type": "string",
+                "enum": ["hoje", "amanhã", *DIAS_SEMANA],
+                "description": (
+                    "Dia que o cliente mencionou pra visita/test-drive, só o NOME do dia (ou "
+                    "'hoje'/'amanhã') — NUNCA calcule a data (dia/mês) você mesmo, é conta que "
+                    "você erra com frequência. O código resolve a data exata a partir desse "
+                    "valor. Use isso sempre que o cliente citar um dia da semana."
+                ),
+            },
+            "periodo_visita": {
+                "type": "string", "enum": ["manhã", "tarde"],
+                "description": "Período do dia da visita, se o cliente mencionar",
+            },
+            "preferencia_contato": {
+                "type": "string",
+                "description": (
+                    "SÓ use quando NÃO for um dia da semana simples (ex: data específica que o "
+                    "cliente já deu pronta tipo '15 de agosto', ou algo vago tipo 'depois das "
+                    "férias') — nesse caso raro, descreva em texto livre. Se o cliente citou um "
+                    "dia da semana, use `dia_visita` + `periodo_visita` em vez deste campo."
+                ),
+            },
             "resumo_executivo": {"type": "string", "description": "Resumo curto (3-4 linhas) pro vendedor"},
             "observacoes": {"type": "string"},
             "status": {
@@ -64,8 +86,43 @@ LEAD_TOOL["cache_control"] = {"type": "ephemeral"}
 
 TOOLS = inventory.TOOLS + [LEAD_TOOL]
 
+_DIA_SEMANA_INDEX = {nome: i for i, nome in enumerate(DIAS_SEMANA)}
+
+
+def _resolver_dia_visita(dia_visita: Optional[str], periodo_visita: Optional[str]) -> Optional[str]:
+    """Resolve dia_visita ('quinta-feira', 'hoje', 'amanhã') pra uma data concreta calculada em
+    Python — a IA só diz QUAL dia da semana, nunca a data — isso é aritmética simples que ela
+    erra de vez em quando (já vimos calcular "quinta que vem" e cair numa sexta)."""
+    if not dia_visita:
+        return None
+    agora = datetime.now(BUSINESS_TZ)
+    chave = dia_visita.strip().lower()
+    if chave == "hoje":
+        alvo = agora
+    elif chave in ("amanhã", "amanha"):
+        alvo = agora + timedelta(days=1)
+    elif chave in _DIA_SEMANA_INDEX:
+        delta = (_DIA_SEMANA_INDEX[chave] - agora.weekday()) % 7
+        # "quinta-feira" citada quando hoje já é quinta significa a quinta que vem, não hoje —
+        # pra hoje mesmo a IA usa o valor "hoje", que cai no primeiro if acima.
+        delta = delta or 7
+        alvo = agora + timedelta(days=delta)
+    else:
+        return None
+
+    resolvido = f"{DIAS_SEMANA[alvo.weekday()]}, {alvo.strftime('%d/%m/%Y')}"
+    if periodo_visita:
+        resolvido += f" de {periodo_visita}"
+    return resolvido
+
 
 def _handle_lead_tool(tool_input: dict, dealership_id: int, phone: str) -> dict:
+    dia_visita = tool_input.pop("dia_visita", None)
+    periodo_visita = tool_input.pop("periodo_visita", None)
+    resolvido = _resolver_dia_visita(dia_visita, periodo_visita)
+    if resolvido:
+        tool_input["preferencia_contato"] = resolvido
+
     db = SessionLocal()
     try:
         lead, is_new = get_or_create_lead(db, dealership_id, phone)
@@ -175,7 +232,6 @@ def get_ai_response(
 
     lead_to_notify = None
     photos_to_send = None
-    text_parts = []
 
     for _ in range(MAX_TOOL_ITERATIONS):
         _refresh_cache_breakpoint(api_messages)
@@ -188,15 +244,14 @@ def get_ai_response(
         )
         _log_usage(response.usage, phone)
 
-        # O Claude pode combinar texto conversacional + tool_use na mesma resposta
-        # (ex: "Já vou verificar isso..." + chamada da tool) — nunca descartar esse texto.
-        turn_text = "".join(block.text for block in response.content if block.type == "text").strip()
-        if turn_text:
-            text_parts.append(turn_text)
-
         if response.stop_reason != "tool_use":
-            return "\n\n".join(text_parts), lead_to_notify, photos_to_send
+            final_text = "".join(block.text for block in response.content if block.type == "text").strip()
+            return final_text, lead_to_notify, photos_to_send
 
+        # Turno intermediário (ainda vai chamar mais tool): o texto que vem junto ("vou
+        # verificar...", "aqui está a ficha completa:") é descartado de propósito — só o texto
+        # do turno final (acima) chega pro cliente. Sem isso, cada narração de "vou fazer X"
+        # entre uma tool call e outra se acumulava e ia toda pro WhatsApp.
         api_messages.append({"role": "assistant", "content": _content_blocks(response.content)})
         tool_results = []
         for block in response.content:
@@ -225,9 +280,7 @@ def get_ai_response(
         messages=api_messages,
     )
     final_text = "".join(block.text for block in response.content if block.type == "text").strip()
-    if final_text:
-        text_parts.append(final_text)
-    return "\n\n".join(text_parts), lead_to_notify, photos_to_send
+    return final_text, lead_to_notify, photos_to_send
 
 
 def _log_usage(usage, phone: str):

@@ -166,6 +166,17 @@ def no_retry_narration(text):
     ]
     return not any(m in lower for m in markers)
 
+def no_intro_filler(text):
+    """Pega narração de "vou fazer X" que sobrevive mesmo dentro do turno final (diferente do
+    no_retry_narration acima, que pega texto de turnos intermediários — esse aqui é sobre o
+    próprio texto final começar com anúncio em vez de ir direto ao conteúdo)."""
+    lower = text.lower()
+    markers = [
+        "vou trazer", "vou buscar", "só um momento", "agora vou", "aqui está a ficha completa",
+        "deixa eu buscar", "deixa eu trazer", "um momento, por favor",
+    ]
+    return not any(m in lower for m in markers)
+
 
 # ── Blocos de histórico reutilizáveis ──────────────────────────────────────────
 
@@ -351,6 +362,14 @@ CASES = [
         "history": WELCOME, "input": "E o Porsche Macan, qual o valor?", "name": "",
         "criterio": "Cita R$ 339.900",
         "check": lambda t, l: mentions_price(t, ["339.900", "339900"]),
+    },
+    {
+        "id": 57, "cat": 3, "cat_nome": "Detalhes (grounding)",
+        "nome": "Ficha do T-Cross vai direto ao ponto, sem narrar 'vou trazer'/'aqui está a ficha completa'",
+        "history": WELCOME,
+        "input": "boa tarde, gostaria de mais informação do t-cross tsi", "name": "",
+        "criterio": "Resposta cita specs reais do T-Cross (preço R$ 94.900) sem frase de anúncio antes do conteúdo",
+        "check": lambda t, l: mentions_price(t, ["94.900", "94900"]) and no_intro_filler(t),
     },
 
     # ════════════════════════════════════════════════════════════════════════
