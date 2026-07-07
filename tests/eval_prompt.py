@@ -177,6 +177,35 @@ def no_intro_filler(text):
     ]
     return not any(m in lower for m in markers)
 
+def pede_cadastro_basico(text):
+    lower = text.lower()
+    tem_nome = "nome" in lower
+    tem_contato = any(k in lower for k in ["telefone", "e-mail", "email", "contato"])
+    return tem_nome and tem_contato
+
+def no_achei_opener(text):
+    """A resposta não pode abrir narrando a busca em si ("Achei —", "Encontrei —") antes do
+    resultado — fica contraditório quando o resultado é negativo (ver regra_de_ouro em
+    dealership_config.py sobre nunca narrar o processo de busca pro cliente)."""
+    lower = text.strip().lower()
+    return not lower.startswith("achei") and not lower.startswith("encontrei")
+
+def cadastro_antes_da_ficha(text):
+    """A ficha completa (specs técnicos) pode vir na mesma mensagem, mas só depois do pedido
+    de cadastro — usado junto com pede_cadastro_basico pra confirmar a ORDEM exigida pela
+    exceção de grounding do passo 1 (cadastro primeiro, detalhes do veículo depois)."""
+    lower = text.lower()
+    cadastro_markers = ["nome", "e-mail", "email", "telefone", "contato"]
+    specs_markers = [
+        "quilometragem", "km", "câmbio", "cambio", "combustível", "combustivel",
+        "motor", "destaques", "torque", "cv",
+    ]
+    idx_cadastro = min((lower.find(m) for m in cadastro_markers if m in lower), default=None)
+    idx_specs = min((lower.find(m) for m in specs_markers if m in lower), default=None)
+    if idx_cadastro is None or idx_specs is None:
+        return False
+    return idx_cadastro < idx_specs
+
 
 # ── Blocos de histórico reutilizáveis ──────────────────────────────────────────
 
@@ -263,6 +292,13 @@ CASES = [
         "check": lambda t, l: mentions_vehicle_terms(t),
     },
     {
+        "id": 58, "cat": 1, "cat_nome": "Abertura",
+        "nome": "'Quero mais informação' na 1ª mensagem: cadastro primeiro, ficha completa depois, mesma mensagem",
+        "history": [], "input": "Boa tarde, quero mais informacao da bmw r 18", "name": "",
+        "criterio": "Pede nome/contato ANTES de trazer preço e ficha completa (km/câmbio/motor/destaques), tudo na mesma mensagem",
+        "check": lambda t, l: mentions_price(t, ["99.900", "99900"]) and pede_cadastro_basico(t) and cadastro_antes_da_ficha(t),
+    },
+    {
         "id": 3, "cat": 1, "cat_nome": "Abertura",
         "nome": "Msg seguinte NÃO repete saudação",
         "history": WELCOME,
@@ -315,6 +351,17 @@ CASES = [
         "history": WELCOME, "input": "Tem alguma Ferrari por 30 mil reais?", "name": "",
         "criterio": "Admite que não tem, sem inventar um resultado",
         "check": lambda t, l: admits_unknown(t) or "não" in t.lower(),
+    },
+    {
+        "id": 59, "cat": 2, "cat_nome": "Busca de estoque",
+        "nome": "Marca com hífen ('Mercedes-Benz') encontra veículo cadastrado sem hífen",
+        "history": CADASTRO_FEITO, "input": "Vocês tem a mercedes-benz a200?", "name": "",
+        "criterio": "Encontra o A200 (preço real) e não abre narrando 'achei'/'encontrei' nem diz que não tem",
+        "check": lambda t, l: (
+            mentions_price(t, ["169.900", "169900", "319.900", "319900"])
+            and no_achei_opener(t)
+            and "não está" not in t.lower() and "não temos" not in t.lower()
+        ),
     },
     {
         "id": 53, "cat": 2, "cat_nome": "Busca de estoque",

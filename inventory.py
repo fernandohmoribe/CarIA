@@ -5,6 +5,8 @@ Importante: lê exclusivamente o banco local (SQLite), nunca o sistema da loja
 de origem em tempo real. O banco local é mantido pelo sync_inventory.py.
 """
 
+import re
+
 from database import SessionLocal, Vehicle, get_vehicle_by_slug
 
 TOOLS = [
@@ -118,7 +120,10 @@ def buscar_veiculos(
     try:
         q = db.query(Vehicle).filter(Vehicle.dealership_id == dealership_id)
         if termo:
-            palavras = termo.split()
+            # Separa em qualquer caractere não-alfanumérico, não só espaço — "Mercedes-Benz"
+            # (hífen) precisa virar ["Mercedes", "Benz"], senão não bate com o brand "Mercedes
+            # Benz" (espaço) cadastrado no banco e o AND entre palavras zera o resultado.
+            palavras = [p for p in re.split(r"\W+", termo) if p]
             for palavra in palavras:
                 like = f"%{palavra}%"
                 q = q.filter(
