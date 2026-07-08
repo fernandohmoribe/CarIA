@@ -20,13 +20,13 @@
             {% endfor %}
             {% endif %}
         </div>
-        <form method="get" action="/admin/leads" id="q-form" class="flex items-center">
+        <form method="get" action="/admin/leads" id="q-form" class="flex items-center w-full sm:w-auto">
             <input type="hidden" name="view" value="{{ view }}">
             {% if filtro_status %}<input type="hidden" name="status" value="{{ filtro_status }}">{% endif %}
             {% if filtro_prioridade %}<input type="hidden" name="prioridade" value="{{ filtro_prioridade }}">{% endif %}
             <input type="text" name="q" id="q-input" value="{{ filtro_q }}" placeholder="Buscar por nome ou veículo..."
                    autocomplete="off"
-                   class="text-xs bg-[#111113] border border-zinc-800 rounded-full px-4 py-1.5 w-56 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-450">
+                   class="text-xs bg-[#111113] border border-zinc-800 rounded-full px-4 py-1.5 w-full sm:w-56 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-450">
         </form>
     </div>
 </div>

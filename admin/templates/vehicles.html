@@ -2,13 +2,13 @@
 {% block title %}Veículos{% endblock %}
 {% block content %}
 
-<div class="flex items-center justify-between mb-6">
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
     <div>
         <h1 class="text-2xl font-semibold text-zinc-100">Veículos</h1>
         <p class="text-zinc-500 text-sm mt-1">{{ vehicles|length }} veículo(s) disponível(is) — sincronizados do sistema da loja</p>
     </div>
     <input id="search" type="text" placeholder="Buscar marca ou modelo..."
-           class="bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm w-64 focus:outline-none focus:border-amber-450"
+           class="bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm w-full sm:w-64 focus:outline-none focus:border-amber-450"
            onkeyup="filterVehicles(this.value)">
 </div>
 

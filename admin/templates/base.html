@@ -27,22 +27,54 @@
 </head>
 <body class="bg-[#0a0a0c] text-zinc-200 min-h-screen">
     {% if request.session.get('logged_in') %}
-    <nav class="bg-[#111113] border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-8">
-            <span class="text-lg font-semibold text-amber-450 tracking-wide">🚘 CarIA <span class="text-zinc-500 font-normal text-sm">painel</span></span>
-            <div class="flex gap-1 text-sm">
-                <a href="/admin/dashboard" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/dashboard' %}bg-zinc-800 text-amber-450{% endif %}">Dashboard</a>
-                <a href="/admin/vehicles" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/vehicles' %}bg-zinc-800 text-amber-450{% endif %}">Veículos</a>
-                <a href="/admin/leads" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if '/admin/leads' in request.url.path %}bg-zinc-800 text-amber-450{% endif %}">Leads</a>
-                <a href="/admin/sync" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/sync' %}bg-zinc-800 text-amber-450{% endif %}">Sincronização</a>
-                <a href="/admin/testar-bot" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/testar-bot' %}bg-zinc-800 text-amber-450{% endif %}">Testar Bot</a>
+    <nav class="bg-[#111113] border-b border-zinc-800 px-4 sm:px-6 py-3 sm:py-4">
+        <div class="flex items-center justify-between">
+            <span class="text-lg font-semibold text-amber-450 tracking-wide">🚘 CarIA <span class="text-zinc-500 font-normal text-sm hidden sm:inline">painel</span></span>
+            <div class="hidden sm:flex items-center gap-8">
+                <div class="flex gap-1 text-sm">
+                    <a href="/admin/dashboard" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/dashboard' %}bg-zinc-800 text-amber-450{% endif %}">Dashboard</a>
+                    <a href="/admin/vehicles" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/vehicles' %}bg-zinc-800 text-amber-450{% endif %}">Veículos</a>
+                    <a href="/admin/leads" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if '/admin/leads' in request.url.path %}bg-zinc-800 text-amber-450{% endif %}">Leads</a>
+                    <a href="/admin/sync" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/sync' %}bg-zinc-800 text-amber-450{% endif %}">Sincronização</a>
+                    <a href="/admin/testar-bot" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/testar-bot' %}bg-zinc-800 text-amber-450{% endif %}">Testar Bot</a>
+                </div>
+                <a href="/admin/logout" class="text-sm text-zinc-400 hover:text-zinc-200 transition">Sair</a>
             </div>
+            <button id="nav-toggle" class="sm:hidden text-zinc-400 hover:text-zinc-200 p-2 -mr-2" aria-label="Abrir menu" aria-expanded="false">
+                <svg id="nav-icon-open" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                <svg id="nav-icon-close" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
         </div>
-        <a href="/admin/logout" class="text-sm text-zinc-400 hover:text-zinc-200 transition">Sair</a>
+        <div id="nav-menu" class="hidden sm:hidden flex flex-col gap-1 mt-3 pb-1 text-sm">
+            <a href="/admin/dashboard" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/dashboard' %}bg-zinc-800 text-amber-450{% endif %}">Dashboard</a>
+            <a href="/admin/vehicles" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/vehicles' %}bg-zinc-800 text-amber-450{% endif %}">Veículos</a>
+            <a href="/admin/leads" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if '/admin/leads' in request.url.path %}bg-zinc-800 text-amber-450{% endif %}">Leads</a>
+            <a href="/admin/sync" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/sync' %}bg-zinc-800 text-amber-450{% endif %}">Sincronização</a>
+            <a href="/admin/testar-bot" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/testar-bot' %}bg-zinc-800 text-amber-450{% endif %}">Testar Bot</a>
+            <a href="/admin/logout" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition text-zinc-400">Sair</a>
+        </div>
     </nav>
+    <script>
+        (() => {
+            const toggle = document.getElementById('nav-toggle');
+            const menu = document.getElementById('nav-menu');
+            if (!toggle || !menu) return;
+            toggle.addEventListener('click', () => {
+                const isOpen = !menu.classList.contains('hidden');
+                menu.classList.toggle('hidden');
+                document.getElementById('nav-icon-open').classList.toggle('hidden', !isOpen);
+                document.getElementById('nav-icon-close').classList.toggle('hidden', isOpen);
+                toggle.setAttribute('aria-expanded', String(!isOpen));
+            });
+        })();
+    </script>
     {% endif %}
 
-    <main class="max-w-7xl mx-auto px-6 py-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {% block content %}{% endblock %}
     </main>
 </body>
