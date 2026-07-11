@@ -1,8 +1,10 @@
 """
 Cenários manuais — executa conversas pré-definidas contra a IA de verdade (bate na API
-Anthropic, custa $) e mostra o comportamento na tela. Os veículos citados existem de verdade
-no banco local (sincronizado do estoque da Company Imports). NÃO é teste automatizado — não
-roda via pytest, só invocação direta e com autorização explícita (ver CLAUDE.md).
+Anthropic, custa $) e mostra o comportamento na tela. Os veículos citados devem existir de
+verdade no banco local sincronizado (ver sync_inventory.py) — os nomes abaixo refletem o
+catálogo da Company Imports (piloto anterior); revisar/atualizar após sincronizar uma loja
+nova. NÃO é teste automatizado — não roda via pytest, só invocação direta e com autorização
+explícita (ver CLAUDE.md).
 
 Uso:
     python tests/scenarios_manual.py              # roda todos os cenários

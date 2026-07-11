@@ -255,7 +255,11 @@ def get_or_create_dealership(db, nome: str, connector_type: str, connector_confi
 
 
 def get_default_dealership(db) -> Dealership | None:
-    return db.query(Dealership).order_by(Dealership.id.asc()).first()
+    """"Ativa" = a loja mais recente cadastrada. DESC (não ASC) de propósito: ao trocar de
+    loja criamos uma linha nova preservando o histórico da antiga (get_or_create_dealership
+    busca por nome, então nome diferente = linha nova) — se isso continuasse ordenando por
+    id ASC, a loja antiga permaneceria "a" loja resolvida aqui pra sempre."""
+    return db.query(Dealership).order_by(Dealership.id.desc()).first()
 
 
 # ── Usuários ─────────────────────────────────────────────────────────────

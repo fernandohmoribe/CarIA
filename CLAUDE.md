@@ -1,6 +1,6 @@
 # CarIA — CLAUDE.md
 
-Atendente de veículos via WhatsApp (WAHA + Claude) para revendas — piloto atual: Company Imports.
+Atendente de veículos via WhatsApp (WAHA + Claude) para revendas — piloto atual: Garcia Multimarcas.
 
 ## Convenções de teste
 

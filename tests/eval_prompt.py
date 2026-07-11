@@ -1,7 +1,10 @@
 """
 Avaliação automática do system prompt — cenários da revenda de veículos.
 Os fatos verificados (preço, km, câmbio) são reais, vindos do banco local
-sincronizado do estoque da Company Imports — rode `sync_inventory.py` antes.
+sincronizado do estoque da loja configurada em .env — rode `sync_inventory.py` antes.
+Os casos abaixo com preço/veículo hardcoded (categorias 1-2 principalmente) refletem
+o catálogo da Company Imports (piloto anterior) — revisar/atualizar com dados reais
+após sincronizar uma loja nova.
 
 Uso:
     python tests/eval_prompt.py
@@ -23,6 +26,7 @@ os.environ.setdefault("DATABASE_URL", f"sqlite:///{ROOT}/db/cariar_bot_eval.db")
 
 from claude_agent import get_ai_response
 from database import SessionLocal, Lead, lead_to_dict
+from dealership_config import DEALERSHIP_NAME
 
 # ── Cores ───────────────────────────────────────────────────────────────────────
 G = "\033[32m"; R = "\033[31m"; Y = "\033[33m"; C = "\033[36m"
@@ -224,13 +228,13 @@ CADASTRO_FEITO = WELCOME + [
 ]
 
 INTERESSE_RAM = WELCOME + [
-    {"role": "user", "content": "Tenho interesse na RAM Dakota de 1999"},
+    {"role": "user", "content": "Tenho interesse na Hilux de 2009"},
     {"role": "assistant", "content": "Ótima escolha! Pra eu te ajudar melhor, me diz seu nome e um telefone de contato?"},
 ]
 
 LEAD_CRIADO_RAM = INTERESSE_RAM + [
     {"role": "user", "content": "Carlos Mendes, (44) 99901-0001"},
-    {"role": "assistant", "content": "Perfeito, Carlos! Cadastrei seu interesse na RAM Dakota. Você tem alguma dúvida sobre o veículo?"},
+    {"role": "assistant", "content": "Perfeito, Carlos! Cadastrei seu interesse na Hilux. Você tem alguma dúvida sobre o veículo?"},
 ]
 
 QUALIFICADO = LEAD_CRIADO_RAM + [
@@ -245,11 +249,11 @@ CONVERSA_LONGA_FECHAMENTO = WELCOME + [
     {"role": "user", "content": "Marina Silva, marina@email.com, (44) 98888-1234, em uma semana"},
     {"role": "assistant", "content": "Ótimo, Marina! Anotado. Você já sabe qual veículo quer, ou prefere ver as opções do estoque?"},
     {"role": "user", "content": "quero ver o estoque"},
-    {"role": "assistant", "content": "Aqui está nosso estoque:\n\n**Porsche**\n- Macan\n\n**BMW**\n- 528i M Sport\n\nAlgum despertou seu interesse?"},
-    {"role": "user", "content": "o macan"},
-    {"role": "assistant", "content": "Ótima escolha! O Porsche Macan é um SUV muito completo — R$ 339.900, 2020, automático. Tem alguma dúvida?"},
+    {"role": "assistant", "content": "Aqui está nosso estoque:\n\n**Chevrolet**\n- Cruze Sport6 Premier\n\n**Hyundai**\n- Creta\n\nAlgum despertou seu interesse?"},
+    {"role": "user", "content": "o cruze"},
+    {"role": "assistant", "content": "Ótima escolha! O Chevrolet Cruze Sport6 Premier é um sedã muito completo — R$ 112.900, 2020, automático. Tem alguma dúvida?"},
     {"role": "user", "content": "ele tem teto solar?"},
-    {"role": "assistant", "content": "Essa informação específica eu não tenho aqui comigo agora, mas vou anotar sua pergunta pro vendedor confirmar. Quer ver fotos do Macan?"},
+    {"role": "assistant", "content": "Essa informação específica eu não tenho aqui comigo agora, mas vou anotar sua pergunta pro vendedor confirmar. Quer ver fotos do Cruze?"},
     {"role": "user", "content": "sim"},
     {"role": "assistant", "content": "Te mandei as fotos! 📸 O que achou?"},
     {"role": "user", "content": "gostei bastante"},
@@ -259,15 +263,15 @@ CONVERSA_LONGA_FECHAMENTO = WELCOME + [
 ]
 
 # Reproduz a conversa real da Maria que expôs dois bugs: (1) cliente menciona um veículo novo
-# (Audi A4) na mesma mensagem em que pede pra ver outra marca (BMW) — só a busca era chamada,
-# o interesse no Audi nunca ia pro lead; (2) ao buscar detalhes do veículo escolhido, a IA às
-# vezes narrava a própria tentativa/erro interno ("achei estranho, vou tentar de novo") pro
-# cliente, em vez de tentar de novo em silêncio.
+# (Ferrari) na mesma mensagem em que pede pra ver outra marca (Chevrolet) — só a busca era
+# chamada, o interesse na Ferrari nunca ia pro lead; (2) ao buscar detalhes do veículo escolhido,
+# a IA às vezes narrava a própria tentativa/erro interno ("achei estranho, vou tentar de novo")
+# pro cliente, em vez de tentar de novo em silêncio.
 INTERESSE_AUDI_SEM_ESTOQUE = WELCOME + [
     {"role": "user", "content": "Maria, maria@gmail.com, (44) 98888-0002, em 10 dias"},
-    {"role": "assistant", "content": "Perfeito, Maria! Qual é o Audi específico que você procura (modelo, ano)?"},
+    {"role": "assistant", "content": "Perfeito, Maria! Qual é a Ferrari específica que você procura (modelo, ano)?"},
     {"role": "user", "content": "qual voce tem?"},
-    {"role": "assistant", "content": "No momento não temos nenhum Audi disponível no estoque. Posso anotar seu interesse pro nosso time verificar — qual Audi você tinha em mente?"},
+    {"role": "assistant", "content": "No momento não temos nenhuma Ferrari disponível no estoque. Posso anotar seu interesse pro nosso time verificar — qual Ferrari você tinha em mente?"},
 ]
 
 # ── Casos de avaliação ───────────────────────────────────────────────────────
@@ -287,14 +291,14 @@ CASES = [
     {
         "id": 2, "cat": 1, "cat_nome": "Abertura",
         "nome": "Cliente já diz o carro de interesse na 1ª mensagem",
-        "history": [], "input": "Vi o Porsche Macan no anúncio, ainda tá disponível?", "name": "Ana",
+        "history": [], "input": "Vi o Volkswagen Nivus no anúncio, ainda tá disponível?", "name": "Ana",
         "criterio": "Menciona o veículo/estoque na resposta",
         "check": lambda t, l: mentions_vehicle_terms(t),
     },
     {
         "id": 58, "cat": 1, "cat_nome": "Abertura",
         "nome": "'Quero mais informação' na 1ª mensagem: cadastro primeiro, ficha completa depois, mesma mensagem",
-        "history": [], "input": "Boa tarde, quero mais informacao da bmw r 18", "name": "",
+        "history": [], "input": "Boa tarde, quero mais informacao do discovery sport", "name": "",
         "criterio": "Pede nome/contato ANTES de trazer preço e ficha completa (km/câmbio/motor/destaques), tudo na mesma mensagem",
         "check": lambda t, l: mentions_price(t, ["99.900", "99900"]) and pede_cadastro_basico(t) and cadastro_antes_da_ficha(t),
     },
@@ -319,31 +323,31 @@ CASES = [
     # ════════════════════════════════════════════════════════════════════════
     {
         "id": 5, "cat": 2, "cat_nome": "Busca de estoque",
-        "nome": "Busca por marca — BMW",
-        "history": CADASTRO_FEITO, "input": "Vocês têm BMW no estoque?", "name": "",
-        "criterio": "Menciona algum modelo BMW real (528i, X5 ou X6)",
-        "check": lambda t, l: any(k in t for k in ["528i", "X5", "X6", "R 18"]),
+        "nome": "Busca por marca — Chevrolet",
+        "history": CADASTRO_FEITO, "input": "Vocês têm Chevrolet no estoque?", "name": "",
+        "criterio": "Menciona algum modelo Chevrolet real (Cruze, Onix, Tracker, S10, Montana, Corsa)",
+        "check": lambda t, l: any(k in t for k in ["Cruze", "Onix", "Tracker", "S10", "Montana", "Corsa"]),
     },
     {
         "id": 6, "cat": 2, "cat_nome": "Busca de estoque",
         "nome": "Busca por faixa de preço",
         "history": CADASTRO_FEITO, "input": "Tem algum carro até 120 mil reais?", "name": "",
-        "criterio": "Cita um veículo dentro dessa faixa (Dakota, T-Cross, R18 ou 528i)",
-        "check": lambda t, l: any(k in t for k in ["Dakota", "T-Cross", "T-CROSS", "R 18", "528i"]),
+        "criterio": "Cita um veículo dentro dessa faixa (Nivus, Creta, Cruze, T-Cross ou Kicks)",
+        "check": lambda t, l: any(k in t for k in ["Nivus", "Creta", "Cruze", "T-Cross", "T-CROSS", "Kicks"]),
     },
     {
         "id": 7, "cat": 2, "cat_nome": "Busca de estoque",
         "nome": "Busca por carroceria — SUV",
         "history": CADASTRO_FEITO, "input": "Quais SUVs vocês têm?", "name": "",
-        "criterio": "Cita algum SUV real (X5, GLB, GLC, Cayenne, Macan, T-Cross)",
-        "check": lambda t, l: any(k in t for k in ["X5", "GLB", "GLC", "Cayenne", "Macan", "T-Cross", "T-CROSS"]),
+        "criterio": "Cita algum SUV real (Tracker, Kicks, Creta, Discovery Sport, HR-V, T-Cross)",
+        "check": lambda t, l: any(k in t for k in ["Tracker", "Kicks", "Creta", "Discovery", "HR-V", "Hr-V", "T-Cross", "T-CROSS"]),
     },
     {
         "id": 8, "cat": 2, "cat_nome": "Busca de estoque",
         "nome": "Busca picape",
         "history": CADASTRO_FEITO, "input": "Procuro uma picape", "name": "",
-        "criterio": "Cita a Dakota ou a Rampage",
-        "check": lambda t, l: any(k in t for k in ["Dakota", "Rampage"]),
+        "criterio": "Cita a Hilux, a Ranger ou a S10",
+        "check": lambda t, l: any(k in t for k in ["Hilux", "Ranger", "S10"]),
     },
     {
         "id": 9, "cat": 2, "cat_nome": "Busca de estoque",
@@ -354,11 +358,11 @@ CASES = [
     },
     {
         "id": 59, "cat": 2, "cat_nome": "Busca de estoque",
-        "nome": "Marca com hífen ('Mercedes-Benz') encontra veículo cadastrado sem hífen",
-        "history": CADASTRO_FEITO, "input": "Vocês tem a mercedes-benz a200?", "name": "",
-        "criterio": "Encontra o A200 (preço real) e não abre narrando 'achei'/'encontrei' nem diz que não tem",
+        "nome": "Marca com hífen ('Land-Rover') encontra veículo cadastrado sem hífen ('Land Rover')",
+        "history": CADASTRO_FEITO, "input": "Vocês tem a land-rover discovery sport?", "name": "",
+        "criterio": "Encontra o Discovery Sport (preço real) e não abre narrando 'achei'/'encontrei' nem diz que não tem",
         "check": lambda t, l: (
-            mentions_price(t, ["169.900", "169900", "319.900", "319900"])
+            mentions_price(t, ["99.900", "99900"])
             and no_achei_opener(t)
             and "não está" not in t.lower() and "não temos" not in t.lower()
         ),
@@ -377,46 +381,46 @@ CASES = [
     # ════════════════════════════════════════════════════════════════════════
     {
         "id": 10, "cat": 3, "cat_nome": "Detalhes (grounding)",
-        "nome": "Preço da RAM Dakota bate com o banco (R$ 99.900)",
+        "nome": "Preço da Hilux bate com o banco (R$ 84.900)",
         "history": INTERESSE_RAM, "input": "Qual o preço dela mesmo?", "name": "",
-        "criterio": "Cita R$ 99.900 (valor real no banco)",
-        "check": lambda t, l: mentions_price(t, ["99.900", "99900", "99.900,00"]),
+        "criterio": "Cita R$ 84.900 (valor real no banco)",
+        "check": lambda t, l: mentions_price(t, ["84.900", "84900", "84.900,00"]),
     },
     {
         "id": 11, "cat": 3, "cat_nome": "Detalhes (grounding)",
-        "nome": "Quilometragem da RAM Dakota bate com o banco (220.000 km)",
+        "nome": "Quilometragem da Hilux bate com o banco (370.000 km)",
         "history": INTERESSE_RAM, "input": "Qual a quilometragem?", "name": "",
-        "criterio": "Cita 220.000 km (valor real no banco)",
-        "check": lambda t, l: mentions_price(t, ["220.000", "220000", "220 mil"]),
+        "criterio": "Cita 370.000 km (valor real no banco)",
+        "check": lambda t, l: mentions_price(t, ["370.000", "370000", "370 mil"]),
     },
     {
         "id": 12, "cat": 3, "cat_nome": "Detalhes (grounding)",
-        "nome": "Câmbio da RAM Dakota é Manual",
+        "nome": "Câmbio da Hilux é Manual",
         "history": INTERESSE_RAM, "input": "É automático ou manual?", "name": "",
         "criterio": "Responde Manual",
         "check": lambda t, l: "manual" in t.lower(),
     },
     {
         "id": 13, "cat": 3, "cat_nome": "Detalhes (grounding)",
-        "nome": "Preço do BMW X5 xDrive45e bate com o banco",
-        "history": WELCOME, "input": "Quanto custa o BMW X5 xDrive45e?", "name": "",
-        "criterio": "Cita R$ 434.900",
-        "check": lambda t, l: mentions_price(t, ["434.900", "434900"]),
+        "nome": "Preço do Ford Ranger 2024 bate com o banco",
+        "history": WELCOME, "input": "Quanto custa o Ford Ranger 2024?", "name": "",
+        "criterio": "Cita R$ 238.900",
+        "check": lambda t, l: mentions_price(t, ["238.900", "238900"]),
     },
     {
         "id": 14, "cat": 3, "cat_nome": "Detalhes (grounding)",
-        "nome": "Preço do Porsche Macan bate com o banco",
-        "history": WELCOME, "input": "E o Porsche Macan, qual o valor?", "name": "",
-        "criterio": "Cita R$ 339.900",
-        "check": lambda t, l: mentions_price(t, ["339.900", "339900"]),
+        "nome": "Preço da Hilux 2022 bate com o banco",
+        "history": WELCOME, "input": "E a Hilux 2022, qual o valor?", "name": "",
+        "criterio": "Cita R$ 244.900",
+        "check": lambda t, l: mentions_price(t, ["244.900", "244900"]),
     },
     {
         "id": 57, "cat": 3, "cat_nome": "Detalhes (grounding)",
-        "nome": "Ficha do T-Cross vai direto ao ponto, sem narrar 'vou trazer'/'aqui está a ficha completa'",
+        "nome": "Ficha da Creta vai direto ao ponto, sem narrar 'vou trazer'/'aqui está a ficha completa'",
         "history": WELCOME,
-        "input": "boa tarde, gostaria de mais informação do t-cross tsi", "name": "",
-        "criterio": "Resposta cita specs reais do T-Cross (preço R$ 94.900) sem frase de anúncio antes do conteúdo",
-        "check": lambda t, l: mentions_price(t, ["94.900", "94900"]) and no_intro_filler(t),
+        "input": "boa tarde, gostaria de mais informação da creta", "name": "",
+        "criterio": "Resposta cita specs reais da Creta (preço R$ 119.900) sem frase de anúncio antes do conteúdo",
+        "check": lambda t, l: mentions_price(t, ["119.900", "119900"]) and no_intro_filler(t),
     },
 
     # ════════════════════════════════════════════════════════════════════════
@@ -533,25 +537,25 @@ CASES = [
         "id": 55, "cat": 6, "cat_nome": "Qualificação",
         "nome": "Mensagem mistura veículo novo + pedido de outra marca → chama as DUAS tools",
         "history": INTERESSE_AUDI_SEM_ESTOQUE,
-        "input": "quero um audi a4, voce tem bmw?", "name": "",
-        "criterio": "Lead registra interesse no Audi A4 (mesmo sem estar no estoque) E a resposta traz os BMW do estoque",
-        "check": lambda t, l: has_vehicle_interest(l, "audi", "a4") and mentions_vehicle_terms(t),
+        "input": "quero uma ferrari, voce tem chevrolet?", "name": "",
+        "criterio": "Lead registra interesse na Ferrari (mesmo sem estar no estoque) E a resposta traz os Chevrolet do estoque",
+        "check": lambda t, l: has_vehicle_interest(l, "ferrari") and mentions_vehicle_terms(t),
     },
     {
         "id": 56, "cat": 6, "cat_nome": "Qualificação",
         "nome": "Detalhe de veículo nunca narra tentativa/erro interno da busca pro cliente",
         "history": INTERESSE_AUDI_SEM_ESTOQUE + [
-            {"role": "user", "content": "quero um audi a4, voce tem bmw?"},
+            {"role": "user", "content": "quero uma ferrari, voce tem chevrolet?"},
             {
                 "role": "assistant",
                 "content": (
-                    "Anotado seu interesse no Audi A4! Aqui estão os BMW disponíveis: R 18 PURE "
-                    "(2024), 528i M Sport (2016), X5 xDrive 30D (2018), X6 X Drive 35i (2018), "
-                    "X5 xDrive45e (2023). Algum te interessa?"
+                    "Anotado seu interesse na Ferrari! Aqui estão os Chevrolet disponíveis: Corsa "
+                    "(2006), Cruze LT (2018), Cruze LTZ (2018), Cruze Sport6 Premier (2020), "
+                    "Onix (2021), Tracker (2018). Algum te interessa?"
                 ),
             },
         ],
-        "input": "X5 xDrive45e (2023)", "name": "",
+        "input": "Cruze Sport6 Premier (2020)", "name": "",
         "criterio": "Resposta não narra tentativa/erro de busca (ex: 'achei estranho', 'vou tentar de novo')",
         "check": lambda t, l: no_retry_narration(t),
     },
@@ -688,7 +692,7 @@ CASES = [
         "id": 42, "cat": 11, "cat_nome": "Edge cases",
         "nome": "Mensagem em inglês → responde em português",
         "history": [],
-        "input": "Hello, I'm interested in the BMW X5", "name": "John",
+        "input": "Hello, I'm interested in the Hilux", "name": "John",
         "criterio": "Resposta contém português",
         "check": lambda t, l: responds_in_portuguese(t),
     },
@@ -830,7 +834,7 @@ def main():
     cases = [c for c in CASES if args.cat is None or c["cat"] == args.cat]
 
     print(f"\n{B}{'═' * 60}{X}")
-    print(f"{B}  Prompt Evaluation — {len(CASES)} cenários — CarIA (Company Imports){X}")
+    print(f"{B}  Prompt Evaluation — {len(CASES)} cenários — CarIA ({DEALERSHIP_NAME}){X}")
     print(f"{B}{'═' * 60}{X}\n")
 
     total_p = total_t = 0

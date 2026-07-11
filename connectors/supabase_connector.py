@@ -1,7 +1,7 @@
 """
-Conector de estoque para lojas cujo site é feito em Supabase — caso da
-Company Imports. Lê direto da API REST (PostgREST) do projeto Supabase da
-loja, só leitura, sempre filtrando por veículo disponível e publicado.
+Conector de estoque para lojas cujo site é feito em Supabase. Lê direto da API
+REST (PostgREST) do projeto Supabase da loja, só leitura, sempre filtrando por
+veículo disponível e publicado.
 """
 
 from __future__ import annotations

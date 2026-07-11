@@ -25,17 +25,21 @@ from database import (
     replace_vehicle_images,
     upsert_vehicle,
 )
+from connectors.autocerto_connector import AutoCertoVehicleConnector
+from connectors.base import VehicleSourceConnector
 from connectors.supabase_connector import SupabaseVehicleConnector
 
 MEDIA_ROOT = Path(__file__).parent / "media"
 MAX_DOWNLOAD_WORKERS = 8
 
 
-def build_connector(dealership) -> SupabaseVehicleConnector:
+def build_connector(dealership) -> VehicleSourceConnector:
     config = dealership.connector_config()
-    if dealership.connector_type != "supabase":
-        raise ValueError(f"connector_type não suportado: {dealership.connector_type}")
-    return SupabaseVehicleConnector(base_url=config["base_url"], anon_key=config["anon_key"])
+    if dealership.connector_type == "supabase":
+        return SupabaseVehicleConnector(base_url=config["base_url"], anon_key=config["anon_key"])
+    elif dealership.connector_type == "autocerto":
+        return AutoCertoVehicleConnector(site_url=config["site_url"])
+    raise ValueError(f"connector_type não suportado: {dealership.connector_type}")
 
 
 def _download_all_images(db, connector, dealership_id: int) -> None:
@@ -92,14 +96,22 @@ def _download_all_images(db, connector, dealership_id: int) -> None:
 def run_sync() -> int:
     db = SessionLocal()
     try:
-        dealership = get_or_create_dealership(
-            db,
-            nome=os.getenv("DEALERSHIP_NAME", "Company Imports"),
-            connector_type="supabase",
-            connector_config={
+        connector_type = os.getenv("DEALERSHIP_CONNECTOR_TYPE", "supabase")
+        if connector_type == "supabase":
+            connector_config = {
                 "base_url": os.getenv("SUPABASE_URL", ""),
                 "anon_key": os.getenv("SUPABASE_ANON_KEY", ""),
-            },
+            }
+        elif connector_type == "autocerto":
+            connector_config = {"site_url": os.getenv("AUTOCERTO_SITE_URL", "")}
+        else:
+            raise ValueError(f"DEALERSHIP_CONNECTOR_TYPE não suportado: {connector_type}")
+
+        dealership = get_or_create_dealership(
+            db,
+            nome=os.getenv("DEALERSHIP_NAME", "Minha Loja"),
+            connector_type=connector_type,
+            connector_config=connector_config,
             staff_phone=os.getenv("DEALERSHIP_STAFF_PHONE", ""),
         )
 

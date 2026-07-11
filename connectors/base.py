@@ -1,8 +1,8 @@
 """
 Contrato que qualquer fonte de estoque de uma loja precisa implementar.
 
-Cada loja cliente do produto tem seu próprio sistema de origem (hoje: Supabase
-da Company Imports). Um conector novo só precisa devolver os dados já no
+Cada loja cliente do produto tem seu próprio sistema de origem (ex: Supabase,
+AutoCerto). Um conector novo só precisa devolver os dados já no
 formato normalizado abaixo — o resto do sistema (sync, banco local, bot) é
 genérico e não muda de loja para loja.
 

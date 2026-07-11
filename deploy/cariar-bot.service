@@ -1,5 +1,5 @@
 [Unit]
-Description=CarIA — WhatsApp Bot (Company Imports)
+Description=CarIA — WhatsApp Bot (Garcia Multimarcas)
 After=network.target
 
 [Service]
