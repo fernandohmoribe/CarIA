@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Instagram{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-semibold text-zinc-100">Vídeos do Instagram</h1>
+    <p class="text-zinc-500 text-sm mt-1">
+        Posts sincronizados via <code>sync_instagram.py</code>. Marque quais aparecem na home do site.
+    </p>
+</div>
+
+<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+    {% for post in posts %}
+    <div class="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden">
+        <img src="{{ post.thumbnail_url or post.media_url }}" class="w-full aspect-[9/16] object-cover bg-zinc-900" alt="Post do Instagram">
+        <form method="post" action="/admin/instagram/{{ post.id }}/visibilidade" class="p-2">
+            <label class="flex items-center gap-2 text-xs text-zinc-300">
+                <input type="checkbox" name="visivel" onchange="this.form.requestSubmit()" {% if post.visivel %}checked{% endif %}>
+                Mostrar no site
+            </label>
+        </form>
+    </div>
+    {% else %}
+    <p class="text-zinc-500 text-sm col-span-full text-center py-10">
+        Nenhum post sincronizado ainda. Configure <code>INSTAGRAM_ACCESS_TOKEN</code> e rode <code>sync_instagram.py</code>.
+    </p>
+    {% endfor %}
+</div>
+{% endblock %}

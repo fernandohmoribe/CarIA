@@ -1,0 +1,37 @@
+{% extends "base_public.html" %}
+{% block title %}Sobre Nós{% endblock %}
+{% block content %}
+
+<div class="max-w-2xl mx-auto py-6">
+    <h1 class="text-2xl font-semibold text-zinc-900 mb-6 text-center">Sobre a {{ dealership_name }}</h1>
+    <p class="text-zinc-600 leading-relaxed whitespace-pre-line">{{ quem_somos }}</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-10">
+        <div class="bg-white border border-zinc-200 rounded-2xl p-5 text-center shadow-sm">
+            <p class="text-2xl">🔍</p>
+            <p class="text-sm font-medium text-zinc-900 mt-2">Procedência comprovada</p>
+        </div>
+        <div class="bg-white border border-zinc-200 rounded-2xl p-5 text-center shadow-sm">
+            <p class="text-2xl">🤝</p>
+            <p class="text-sm font-medium text-zinc-900 mt-2">Atendimento próximo</p>
+        </div>
+        <div class="bg-white border border-zinc-200 rounded-2xl p-5 text-center shadow-sm">
+            <p class="text-2xl">🚗</p>
+            <p class="text-sm font-medium text-zinc-900 mt-2">Multimarcas revisados</p>
+        </div>
+    </div>
+
+    {% if dealership_address or dealership_hours %}
+    <div class="bg-white border border-zinc-200 rounded-2xl p-5 mt-10 shadow-sm text-sm text-zinc-600">
+        {% if dealership_address %}<p>📍 {{ dealership_address }}</p>{% endif %}
+        {% if dealership_hours %}<p class="mt-1">🕐 {{ dealership_hours }}</p>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="text-center mt-10">
+        <a href="/veiculos" class="inline-block bg-brand text-white font-medium rounded-lg px-6 py-3 text-sm hover:bg-brand-dark transition">
+            Conhecer o estoque
+        </a>
+    </div>
+</div>
+{% endblock %}

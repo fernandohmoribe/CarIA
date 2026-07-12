@@ -15,7 +15,10 @@ from database import (
     MANUAL_LEAD_STATUSES,
     SessionLocal,
     close_conversation,
+    delete_news_post,
+    get_all_instagram_posts,
     get_all_leads,
+    get_all_news_posts,
     get_available_vehicles,
     get_conversation,
     get_conversation_history_for_lead,
@@ -23,16 +26,19 @@ from database import (
     get_latest_lead,
     get_lead_by_id,
     get_lead_historico,
+    get_news_post_by_slug,
     get_or_create_user,
     get_vehicle_by_slug,
     replace_vehicle_images,
     save_conversation,
+    set_instagram_post_visibility,
     set_lead_status,
+    upsert_news_post,
     upsert_vehicle,
 )
 from dealership_config import to_local
 from image_utils import resize_and_save_webp
-from slugify import generate_unique_slug
+from slugify import generate_unique_news_slug, generate_unique_slug
 import template_helpers
 
 router = APIRouter(prefix="/admin")
@@ -327,6 +333,145 @@ async def vehicle_delete(request: Request, slug: str):
             db.commit()
             shutil.rmtree(MEDIA_ROOT / "vehicles" / slug, ignore_errors=True)
         return RedirectResponse(url="/admin/vehicles", status_code=302)
+    finally:
+        db.close()
+
+
+@router.get("/novidades")
+async def news_posts_page(request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        posts = get_all_news_posts(db, dealership.id if dealership else None)
+        return templates.TemplateResponse("news_posts.html", {"request": request, "posts": posts})
+    finally:
+        db.close()
+
+
+@router.get("/novidades/novo")
+async def news_post_new_form(request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    return templates.TemplateResponse("news_post_form.html", {"request": request, "post": None})
+
+
+@router.get("/novidades/{slug}/editar")
+async def news_post_edit_form(request: Request, slug: str):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        post = get_news_post_by_slug(db, dealership.id if dealership else None, slug, only_published=False)
+        if not post:
+            return RedirectResponse(url="/admin/novidades", status_code=302)
+        return templates.TemplateResponse("news_post_form.html", {"request": request, "post": post})
+    finally:
+        db.close()
+
+
+async def _save_news_post_form(request: Request, existing_slug: str | None) -> RedirectResponse:
+    form = await request.form()
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        dealership_id = dealership.id if dealership else None
+
+        titulo = (form.get("titulo") or "").strip()
+        slug = existing_slug or generate_unique_news_slug(db, dealership_id, titulo)
+
+        data = {
+            "titulo": titulo,
+            "slug": slug,
+            "resumo": (form.get("resumo") or "").strip() or None,
+            "conteudo": (form.get("conteudo") or "").strip() or None,
+            "publicado": bool(form.get("publicado")),
+        }
+
+        imagem = form.get("imagem")
+        if imagem is not None and getattr(imagem, "filename", ""):
+            content_type = imagem.content_type or ""
+            content = await imagem.read()
+            if content_type.startswith("image/") and len(content) <= 15 * 1024 * 1024:
+                rel_path = f"news/{slug}.webp"
+                resize_and_save_webp(content, MEDIA_ROOT / rel_path)
+                data["imagem_local_path"] = rel_path
+                data["imagem_url"] = f"/media/{rel_path}"
+
+        upsert_news_post(db, dealership_id, data, slug=existing_slug)
+        return RedirectResponse(url="/admin/novidades", status_code=302)
+    finally:
+        db.close()
+
+
+@router.post("/novidades/novo")
+async def news_post_create(request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    return await _save_news_post_form(request, existing_slug=None)
+
+
+@router.post("/novidades/{slug}/editar")
+async def news_post_edit(request: Request, slug: str):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    return await _save_news_post_form(request, existing_slug=slug)
+
+
+@router.post("/novidades/{slug}/excluir")
+async def news_post_delete(request: Request, slug: str):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        delete_news_post(db, dealership.id if dealership else None, slug)
+        return RedirectResponse(url="/admin/novidades", status_code=302)
+    finally:
+        db.close()
+
+
+@router.get("/instagram")
+async def instagram_posts_page(request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        posts = get_all_instagram_posts(db, dealership.id if dealership else None)
+        return templates.TemplateResponse("instagram_posts.html", {"request": request, "posts": posts})
+    finally:
+        db.close()
+
+
+@router.post("/instagram/{post_id}/visibilidade")
+async def instagram_post_toggle_visibility(request: Request, post_id: int):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    visivel = bool(form.get("visivel"))
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        set_instagram_post_visibility(db, dealership.id if dealership else None, post_id, visivel)
+        return RedirectResponse(url="/admin/instagram", status_code=302)
     finally:
         db.close()
 

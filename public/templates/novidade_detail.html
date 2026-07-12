@@ -1,0 +1,19 @@
+{% extends "base_public.html" %}
+{% block title %}{{ post.titulo }}{% endblock %}
+{% block content %}
+
+<div class="max-w-2xl mx-auto py-6">
+    <a href="/novidades" class="text-zinc-500 text-sm hover:text-zinc-700">← Voltar pras novidades</a>
+
+    <h1 class="text-2xl font-semibold text-zinc-900 mt-4">{{ post.titulo }}</h1>
+
+    {% if post.imagem_local_path or post.imagem_url %}
+    <img src="{{ img_src(post.imagem_local_path, post.imagem_url, 1200, 675) }}"
+         class="w-full rounded-2xl bg-zinc-200 object-cover mt-4" style="aspect-ratio: 16/9;" alt="{{ post.titulo }}">
+    {% endif %}
+
+    {% if post.conteudo %}
+    <p class="text-zinc-700 text-sm mt-6 whitespace-pre-line leading-relaxed">{{ post.conteudo }}</p>
+    {% endif %}
+</div>
+{% endblock %}

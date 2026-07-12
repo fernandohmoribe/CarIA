@@ -19,13 +19,14 @@
     <header class="bg-black px-4 sm:px-6 py-4 sticky top-0 z-40 shadow-lg">
         <div class="max-w-5xl mx-auto flex items-center justify-between gap-4">
             <nav class="hidden sm:flex items-center gap-8 flex-1 justify-end">
-                <a href="/veiculos" class="text-zinc-300 text-sm hover:text-white transition">Início</a>
-                <a href="/veiculos#quem-somos" class="text-zinc-300 text-sm hover:text-white transition">Sobre Nós</a>
+                <a href="/" class="text-zinc-300 text-sm hover:text-white transition">Início</a>
+                <a href="/sobre-nos" class="text-zinc-300 text-sm hover:text-white transition">Sobre Nós</a>
+                <a href="/novidades" class="text-zinc-300 text-sm hover:text-white transition">Novidades</a>
             </nav>
-            <a href="/veiculos" class="shrink-0"><img src="/static/logo.png" alt="{{ dealership_name }}" class="h-12"></a>
+            <a href="/" class="shrink-0"><img src="/static/logo.png" alt="{{ dealership_name }}" class="h-12"></a>
             <nav class="hidden sm:flex items-center gap-8 flex-1">
                 <a href="/veiculos" class="text-zinc-300 text-sm hover:text-white transition">Estoque</a>
-                <a href="/veiculos#contato" class="text-zinc-300 text-sm hover:text-white transition">Contato</a>
+                <a href="/contato" class="text-zinc-300 text-sm hover:text-white transition">Contato</a>
             </nav>
         </div>
     </header>
@@ -36,14 +37,16 @@
 
     <footer class="bg-zinc-900 text-zinc-400 mt-10">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 sm:grid-cols-3 gap-8 text-sm">
-            <div id="quem-somos" style="scroll-margin-top: 90px;">
+            <div>
                 <h3 class="text-white font-semibold text-xs tracking-wide mb-3">QUEM SOMOS</h3>
                 <p class="leading-relaxed text-zinc-400">{{ quem_somos }}</p>
+                <a href="/sobre-nos" class="text-brand text-xs hover:underline mt-2 inline-block">Saiba mais →</a>
             </div>
             {% if dealership_phone %}
-            <div id="contato" style="scroll-margin-top: 90px;">
+            <div>
                 <h3 class="text-white font-semibold text-xs tracking-wide mb-3">CONTATO</h3>
                 <p>📞 {{ dealership_phone }}</p>
+                <a href="/contato" class="text-brand text-xs hover:underline mt-2 inline-block">Fale conosco →</a>
             </div>
             {% endif %}
             {% if dealership_address %}

@@ -46,3 +46,21 @@ def generate_unique_slug(
             return candidate
 
     return f"{base}-{uuid.uuid4().hex[:6]}"
+
+
+def generate_unique_news_slug(db, dealership_id: int, titulo: str, max_attempts: int = 50) -> str:
+    """Mesma lógica de generate_unique_slug, mas pra NewsPost (baseado só no título)."""
+    from database import get_news_post_by_slug
+
+    base = slugify(titulo) or "novidade"
+
+    candidate = base
+    if get_news_post_by_slug(db, dealership_id, candidate, only_published=False) is None:
+        return candidate
+
+    for attempt in range(2, max_attempts + 2):
+        candidate = f"{base}-{attempt}"
+        if get_news_post_by_slug(db, dealership_id, candidate, only_published=False) is None:
+            return candidate
+
+    return f"{base}-{uuid.uuid4().hex[:6]}"

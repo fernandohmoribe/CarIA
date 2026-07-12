@@ -236,6 +236,56 @@ class LeadHistorico(Base):
     user = relationship("User")
 
 
+# ── Conteúdo do site público (novidades, vídeos do Instagram, avaliações Google) ──
+class NewsPost(Base):
+    __tablename__ = "news_posts"
+    __table_args__ = (UniqueConstraint("dealership_id", "slug", name="uq_newspost_dealership_slug"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
+    titulo = Column(String, nullable=False)
+    slug = Column(String, index=True)
+    resumo = Column(String)
+    conteudo = Column(Text)
+    imagem_url = Column(String)
+    imagem_local_path = Column(String)
+    publicado = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# Fase 2 (bloqueada até o usuário gerar o token do Instagram, ver plano) — tabela já existe
+# desde já pra não precisar de migração depois, só fica vazia até o sync rodar.
+class InstagramPost(Base):
+    __tablename__ = "instagram_posts"
+    __table_args__ = (UniqueConstraint("dealership_id", "media_id", name="uq_igpost_dealership_media"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
+    media_id = Column(String, index=True)
+    caption = Column(Text)
+    media_type = Column(String)
+    media_url = Column(String)
+    thumbnail_url = Column(String)
+    permalink = Column(String)
+    timestamp = Column(DateTime, nullable=True)
+    visivel = Column(Boolean, default=False)
+    synced_at = Column(DateTime, default=datetime.utcnow)
+
+
+# Fase 3 (bloqueada até o usuário gerar a chave do Google Places, ver plano).
+class GoogleReview(Base):
+    __tablename__ = "google_reviews"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
+    author_name = Column(String)
+    profile_photo_url = Column(String)
+    rating = Column(Integer)
+    text = Column(Text)
+    relative_time_description = Column(String)
+    synced_at = Column(DateTime, default=datetime.utcnow)
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -407,6 +457,55 @@ def get_public_vehicles(db, dealership_id: int) -> list[Vehicle]:
         .order_by(Vehicle.brand.asc(), Vehicle.model.asc())
         .all()
     )
+
+
+def get_public_vehicles_filtered(
+    db,
+    dealership_id: int,
+    marca: str | None = None,
+    preco_min: float | None = None,
+    preco_max: float | None = None,
+    carroceria: str | None = None,
+    cambio: str | None = None,
+    combustivel: str | None = None,
+) -> list[Vehicle]:
+    """Mesma base de get_public_vehicles (só disponível+publicado), com filtros pra tela de
+    estoque do catálogo público — mesmo espírito de inventory.py::buscar_veiculos, mas
+    parametrizado por query string em vez de chamado pela IA."""
+    q = db.query(Vehicle).filter(
+        Vehicle.dealership_id == dealership_id,
+        Vehicle.status == "Disponivel",
+        Vehicle.publication_status == "Publicado",
+    )
+    if marca:
+        q = q.filter(Vehicle.brand == marca)
+    if preco_min is not None:
+        q = q.filter(Vehicle.price >= preco_min)
+    if preco_max is not None:
+        q = q.filter(Vehicle.price <= preco_max)
+    if carroceria:
+        q = q.filter(Vehicle.body == carroceria)
+    if cambio:
+        q = q.filter(Vehicle.transmission == cambio)
+    if combustivel:
+        q = q.filter(Vehicle.fuel == combustivel)
+    return q.order_by(Vehicle.price.asc()).all()
+
+
+def get_public_filter_options(db, dealership_id: int) -> dict:
+    """Valores distintos hoje no estoque disponível+publicado, pra popular os dropdowns do
+    filtro sem nunca oferecer uma opção que não bate com nenhum veículo real."""
+    base = db.query(Vehicle).filter(
+        Vehicle.dealership_id == dealership_id,
+        Vehicle.status == "Disponivel",
+        Vehicle.publication_status == "Publicado",
+    )
+    return {
+        "marcas": sorted({v[0] for v in base.with_entities(Vehicle.brand).distinct() if v[0]}),
+        "carrocerias": sorted({v[0] for v in base.with_entities(Vehicle.body).distinct() if v[0]}),
+        "cambios": sorted({v[0] for v in base.with_entities(Vehicle.transmission).distinct() if v[0]}),
+        "combustiveis": sorted({v[0] for v in base.with_entities(Vehicle.fuel).distinct() if v[0]}),
+    }
 
 
 def get_public_vehicle_by_slug(db, dealership_id: int, slug: str) -> Vehicle | None:
@@ -653,3 +752,121 @@ def lead_to_dict(lead: Lead) -> dict:
         "created_at": lead.created_at.isoformat() if lead.created_at else None,
         "updated_at": lead.updated_at.isoformat() if lead.updated_at else None,
     }
+
+
+# ── Novidades (posts próprios da loja) ──────────────────────────────────────
+def get_public_news_posts(db, dealership_id: int) -> list:
+    return (
+        db.query(NewsPost)
+        .filter(NewsPost.dealership_id == dealership_id, NewsPost.publicado.is_(True))
+        .order_by(NewsPost.created_at.desc())
+        .all()
+    )
+
+
+def get_all_news_posts(db, dealership_id: int) -> list:
+    """Sem filtro de publicado — pro admin gerenciar rascunhos também."""
+    return (
+        db.query(NewsPost)
+        .filter(NewsPost.dealership_id == dealership_id)
+        .order_by(NewsPost.created_at.desc())
+        .all()
+    )
+
+
+def get_news_post_by_slug(db, dealership_id: int, slug: str, only_published: bool = True) -> NewsPost | None:
+    q = db.query(NewsPost).filter(NewsPost.dealership_id == dealership_id, NewsPost.slug == slug)
+    if only_published:
+        q = q.filter(NewsPost.publicado.is_(True))
+    return q.first()
+
+
+def upsert_news_post(db, dealership_id: int, data: dict, slug: str | None = None) -> NewsPost:
+    post = None
+    if slug:
+        post = get_news_post_by_slug(db, dealership_id, slug, only_published=False)
+    if not post:
+        post = NewsPost(dealership_id=dealership_id)
+        db.add(post)
+    for field in ("titulo", "slug", "resumo", "conteudo", "imagem_url", "imagem_local_path", "publicado"):
+        if field in data:
+            setattr(post, field, data[field])
+    db.commit()
+    db.refresh(post)
+    return post
+
+
+def delete_news_post(db, dealership_id: int, slug: str) -> None:
+    post = get_news_post_by_slug(db, dealership_id, slug, only_published=False)
+    if post:
+        db.delete(post)
+        db.commit()
+
+
+# ── Vídeos do Instagram (Fase 2 — ver plano) ────────────────────────────────
+def get_visible_instagram_posts(db, dealership_id: int) -> list:
+    return (
+        db.query(InstagramPost)
+        .filter(InstagramPost.dealership_id == dealership_id, InstagramPost.visivel.is_(True))
+        .order_by(InstagramPost.timestamp.desc())
+        .all()
+    )
+
+
+def get_all_instagram_posts(db, dealership_id: int) -> list:
+    return (
+        db.query(InstagramPost)
+        .filter(InstagramPost.dealership_id == dealership_id)
+        .order_by(InstagramPost.timestamp.desc())
+        .all()
+    )
+
+
+def upsert_instagram_post(db, dealership_id: int, data: dict) -> InstagramPost:
+    post = (
+        db.query(InstagramPost)
+        .filter(InstagramPost.dealership_id == dealership_id, InstagramPost.media_id == data["media_id"])
+        .first()
+    )
+    if not post:
+        post = InstagramPost(dealership_id=dealership_id, media_id=data["media_id"])
+        db.add(post)
+    for field in ("caption", "media_type", "media_url", "thumbnail_url", "permalink", "timestamp"):
+        if field in data:
+            setattr(post, field, data[field])
+    post.synced_at = datetime.utcnow()
+    db.commit()
+    db.refresh(post)
+    return post
+
+
+def set_instagram_post_visibility(db, dealership_id: int, post_id: int, visivel: bool) -> InstagramPost | None:
+    post = (
+        db.query(InstagramPost)
+        .filter(InstagramPost.dealership_id == dealership_id, InstagramPost.id == post_id)
+        .first()
+    )
+    if post:
+        post.visivel = visivel
+        db.commit()
+        db.refresh(post)
+    return post
+
+
+# ── Avaliações do Google (Fase 3 — ver plano) ───────────────────────────────
+def get_google_reviews(db, dealership_id: int) -> list:
+    return (
+        db.query(GoogleReview)
+        .filter(GoogleReview.dealership_id == dealership_id)
+        .order_by(GoogleReview.id.asc())
+        .all()
+    )
+
+
+def replace_google_reviews(db, dealership_id: int, reviews: list) -> None:
+    """Substitui tudo a cada sync — mesmo espírito de replace_vehicle_images, é um cache
+    simples, não precisa de histórico."""
+    db.query(GoogleReview).filter(GoogleReview.dealership_id == dealership_id).delete()
+    for r in reviews:
+        db.add(GoogleReview(dealership_id=dealership_id, **r))
+    db.commit()

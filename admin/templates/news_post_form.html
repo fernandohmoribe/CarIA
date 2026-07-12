@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ "Editar" if post else "Nova" }} novidade{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold text-zinc-100 mb-6">{{ "Editar" if post else "Nova" }} novidade</h1>
+
+<form method="post" action="{{ '/admin/novidades/' ~ post.slug ~ '/editar' if post else '/admin/novidades/novo' }}"
+      enctype="multipart/form-data" class="max-w-xl space-y-4">
+    <div>
+        <label class="block text-sm text-zinc-400 mb-1">Título</label>
+        <input name="titulo" required value="{{ post.titulo if post else '' }}"
+               class="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100">
+    </div>
+    <div>
+        <label class="block text-sm text-zinc-400 mb-1">Resumo</label>
+        <input name="resumo" value="{{ post.resumo if post else '' }}"
+               class="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100">
+    </div>
+    <div>
+        <label class="block text-sm text-zinc-400 mb-1">Conteúdo</label>
+        <textarea name="conteudo" rows="6"
+                  class="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100">{{ post.conteudo if post else '' }}</textarea>
+    </div>
+    <div>
+        <label class="block text-sm text-zinc-400 mb-1">Imagem</label>
+        <input type="file" name="imagem" accept="image/*" class="w-full text-sm text-zinc-400">
+        {% if post and (post.imagem_local_path or post.imagem_url) %}
+        <img src="{{ img_src(post.imagem_local_path, post.imagem_url, 400, 250) }}" class="mt-2 h-24 rounded-lg object-cover">
+        {% endif %}
+    </div>
+    <label class="flex items-center gap-2 text-sm text-zinc-300">
+        <input type="checkbox" name="publicado" {% if not post or post.publicado %}checked{% endif %}>
+        Publicado (visível no site)
+    </label>
+    <button type="submit" class="bg-amber-450 text-black font-medium rounded-lg px-5 py-2 text-sm hover:brightness-110 transition">
+        Salvar
+    </button>
+</form>
+{% endblock %}
