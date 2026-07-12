@@ -202,3 +202,59 @@ def test_delete_vehicle_removes_row_and_media_files():
     assert db.query(Vehicle).filter(Vehicle.id == vehicle_id).first() is None
     db.close()
     assert not vehicle_dir.exists()
+
+
+def test_create_vehicle_with_checkboxes_and_checklist_persists_correctly():
+    _dealership_id()
+    client = _logged_in_client()
+
+    client.post(
+        "/admin/vehicles/novo",
+        data={
+            "brand": "Toyota", "model": "Hilux Checkbox Teste", "year": "2023", "price": "250000",
+            "mileage": "5000", "body": "Picape", "transmission": "Automático", "fuel": "Diesel", "color": "Prata",
+            "cidade": "São Paulo - SP", "final_placa": "3",
+            "blindado": "on", "aceita_troca": "on", "garantia_fabrica": "on",
+            "highlights": ["Airbag", "GPS"],
+            "outros_destaques": "Item customizado",
+        },
+        follow_redirects=False,
+    )
+
+    db = SessionLocal()
+    vehicle = db.query(Vehicle).filter(Vehicle.model == "Hilux Checkbox Teste").first()
+    assert vehicle.blindado is True
+    assert vehicle.aceita_troca is True
+    assert vehicle.garantia_fabrica is True
+    assert vehicle.unico_dono is False  # não marcado, tem que ficar False, não None
+    assert vehicle.cidade == "São Paulo - SP"
+    assert vehicle.final_placa == "3"
+    assert set(vehicle.highlights()) == {"Airbag", "GPS", "Item customizado"}
+    db.close()
+
+
+def test_unchecking_box_on_edit_saves_as_false():
+    _dealership_id()
+    client = _logged_in_client()
+
+    client.post(
+        "/admin/vehicles/novo",
+        data={"brand": "Fiat", "model": "Toro Desmarcar Teste", "year": "2022", "blindado": "on"},
+        follow_redirects=False,
+    )
+    db = SessionLocal()
+    vehicle = db.query(Vehicle).filter(Vehicle.model == "Toro Desmarcar Teste").first()
+    slug = vehicle.slug
+    assert vehicle.blindado is True
+    db.close()
+
+    client.post(
+        f"/admin/vehicles/{slug}/editar",
+        data={"brand": "Fiat", "model": "Toro Desmarcar Teste", "year": "2022"},  # blindado ausente = desmarcado
+        follow_redirects=False,
+    )
+
+    db = SessionLocal()
+    vehicle = db.query(Vehicle).filter(Vehicle.slug == slug).first()
+    assert vehicle.blindado is False
+    db.close()

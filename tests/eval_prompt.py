@@ -428,10 +428,10 @@ CASES = [
     # ════════════════════════════════════════════════════════════════════════
     {
         "id": 15, "cat": 4, "cat_nome": "Grounding — não inventa",
-        "nome": "Garantia de fábrica não cadastrada",
+        "nome": "Garantia de fábrica: campo estruturado existe (False) — responde com fato real, não 'não sei'",
         "history": INTERESSE_RAM, "input": "Tem quanto tempo de garantia de fábrica?", "name": "",
-        "criterio": "Admite que não tem essa info, não inventa prazo",
-        "check": lambda t, l: admits_unknown(t) and no_invented_warranty(t),
+        "criterio": "Responde que não tem garantia de fábrica (dado real, campo garantia_fabrica=False), sem inventar um prazo",
+        "check": lambda t, l: "não tem garantia" in t.lower() and no_invented_warranty(t),
     },
     {
         "id": 16, "cat": 4, "cat_nome": "Grounding — não inventa",

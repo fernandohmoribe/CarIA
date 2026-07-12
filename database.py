@@ -73,6 +73,15 @@ class Vehicle(Base):
     overview = Column(Text)
     highlights_json = Column(Text, default="[]")
     cover_image_url = Column(String)
+    cidade = Column(String)
+    final_placa = Column(String)
+    blindado = Column(Boolean, default=False)
+    aceita_troca = Column(Boolean, default=False)
+    unico_dono = Column(Boolean, default=False)
+    revisoes_concessionaria = Column(Boolean, default=False)
+    ipva_pago = Column(Boolean, default=False)
+    licenciado = Column(Boolean, default=False)
+    garantia_fabrica = Column(Boolean, default=False)
     synced_at = Column(DateTime, default=datetime.utcnow)
 
     images = relationship(
@@ -325,7 +334,8 @@ def verify_user_credentials(db, username: str, password: str) -> bool:
 VEHICLE_FIELDS = {
     "external_id", "slug", "code", "brand", "model", "version", "year", "price", "mileage",
     "status", "publication_status", "body", "transmission", "fuel", "color", "spec",
-    "overview", "cover_image_url",
+    "overview", "cover_image_url", "cidade", "final_placa", "blindado", "aceita_troca",
+    "unico_dono", "revisoes_concessionaria", "ipva_pago", "licenciado", "garantia_fabrica",
 }
 
 

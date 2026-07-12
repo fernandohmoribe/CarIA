@@ -44,6 +44,29 @@ LOGIN_RATE_LIMIT_BLOCK = 300
 
 MEDIA_ROOT = Path(__file__).parent.parent / "media"
 
+VEHICLE_HIGHLIGHT_OPTIONS = [
+    "Airbag", "Alarme", "Alarme com acionamento a distância", "Ajuste retrovisor elétrico",
+    "Ar condicionado", "Ar quente", "Banco com regulagem de altura", "Bancos de couro",
+    "Bluetooth", "Botão de Ignição/Start button", "Chave Inteligente/Presencial",
+    "Computador de bordo", "Controle automático de velocidade", "Controle de tração",
+    "Desembaçador traseiro", "Direção com Ajuste", "Encosto de cabeça traseiro",
+    "Espelhamento com Smartphone (Android Auto/CarPlay)", "Faróis Full LED", "Freio ABS",
+    "Freios ABS com EBD", "GPS", "Limpador traseiro", "Piloto automático",
+    "Retrovisor fotocrômico", "Retrovisores elétricos", "Rodas de liga leve",
+    "Sensor de estacionamento", "Sensor de pressão dos pneus", "Tela Multimídia",
+    "Travas elétricas", "USB", "Vidros elétricos", "Volante com regulagem de altura",
+]
+
+VEHICLE_YES_NO_FIELDS = [
+    ("blindado", "Blindado"),
+    ("aceita_troca", "Aceita troca"),
+    ("unico_dono", "Único dono"),
+    ("revisoes_concessionaria", "Todas as revisões feitas pela concessionária"),
+    ("ipva_pago", "IPVA pago"),
+    ("licenciado", "Licenciado"),
+    ("garantia_fabrica", "Garantia de fábrica"),
+]
+
 
 def _local_time(dt, fmt: str = "%d/%m/%Y %H:%M", default: str = "—") -> str:
     """Filtro Jinja — converte datetime UTC do banco pro fuso do negócio antes de exibir."""
@@ -155,7 +178,13 @@ async def vehicle_new_form(request: Request):
     redirect = require_login(request)
     if redirect:
         return redirect
-    return templates.TemplateResponse("vehicle_form.html", {"request": request, "vehicle": None})
+    return templates.TemplateResponse(
+        "vehicle_form.html",
+        {
+            "request": request, "vehicle": None,
+            "highlight_options": VEHICLE_HIGHLIGHT_OPTIONS, "yes_no_fields": VEHICLE_YES_NO_FIELDS,
+        },
+    )
 
 
 @router.get("/vehicles/{slug}/editar")
@@ -170,7 +199,13 @@ async def vehicle_edit_form(request: Request, slug: str):
         vehicle = get_vehicle_by_slug(db, dealership.id if dealership else None, slug)
         if not vehicle:
             return RedirectResponse(url="/admin/vehicles", status_code=302)
-        return templates.TemplateResponse("vehicle_form.html", {"request": request, "vehicle": vehicle})
+        return templates.TemplateResponse(
+            "vehicle_form.html",
+            {
+                "request": request, "vehicle": vehicle,
+                "highlight_options": VEHICLE_HIGHLIGHT_OPTIONS, "yes_no_fields": VEHICLE_YES_NO_FIELDS,
+            },
+        )
     finally:
         db.close()
 
@@ -187,7 +222,9 @@ async def _save_vehicle_form(request: Request, existing_slug: str | None) -> Red
         except (TypeError, ValueError):
             return default
 
-    highlights = [line.strip() for line in (form.get("highlights") or "").splitlines() if line.strip()]
+    highlights = list(form.getlist("highlights"))
+    outros = [line.strip() for line in (form.get("outros_destaques") or "").splitlines() if line.strip()]
+    highlights = highlights + outros
 
     db = SessionLocal()
     try:
@@ -222,7 +259,11 @@ async def _save_vehicle_form(request: Request, existing_slug: str | None) -> Red
             "overview": _f("overview"),
             "code": _f("code"),
             "highlights": highlights,
+            "cidade": _f("cidade"),
+            "final_placa": _f("final_placa"),
         }
+        for field_name, _label in VEHICLE_YES_NO_FIELDS:
+            data[field_name] = bool(form.get(field_name))
         vehicle = upsert_vehicle(db, dealership_id, data)
 
         photos = [p for p in form.getlist("photos") if getattr(p, "filename", "")]

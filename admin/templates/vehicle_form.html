@@ -30,38 +30,48 @@
                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
         </div>
         <div>
-            <label class="block text-xs text-zinc-400 mb-1">Ano</label>
-            <input name="year" type="number" value="{{ vehicle.year if vehicle else '' }}"
+            <label class="block text-xs text-zinc-400 mb-1">Ano *</label>
+            <input name="year" type="number" required value="{{ vehicle.year if vehicle else '' }}"
                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
         </div>
         <div>
-            <label class="block text-xs text-zinc-400 mb-1">Preço (R$)</label>
-            <input name="price" type="number" step="0.01" value="{{ vehicle.price if vehicle else '' }}"
+            <label class="block text-xs text-zinc-400 mb-1">Preço (R$) *</label>
+            <input name="price" type="number" step="0.01" required value="{{ vehicle.price if vehicle else '' }}"
                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
         </div>
         <div>
-            <label class="block text-xs text-zinc-400 mb-1">Quilometragem</label>
-            <input name="mileage" type="number" value="{{ vehicle.mileage if vehicle else '' }}"
+            <label class="block text-xs text-zinc-400 mb-1">Quilometragem *</label>
+            <input name="mileage" type="number" required value="{{ vehicle.mileage if vehicle else '' }}"
                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
         </div>
         <div>
-            <label class="block text-xs text-zinc-400 mb-1">Carroceria</label>
-            <input name="body" value="{{ vehicle.body if vehicle else '' }}" placeholder="SUV, Sedã, Picape..."
+            <label class="block text-xs text-zinc-400 mb-1">Carroceria *</label>
+            <input name="body" required value="{{ vehicle.body if vehicle else '' }}" placeholder="SUV, Sedã, Picape..."
                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
         </div>
         <div>
-            <label class="block text-xs text-zinc-400 mb-1">Câmbio</label>
-            <input name="transmission" value="{{ vehicle.transmission if vehicle else '' }}" placeholder="Manual, Automático..."
+            <label class="block text-xs text-zinc-400 mb-1">Câmbio *</label>
+            <input name="transmission" required value="{{ vehicle.transmission if vehicle else '' }}" placeholder="Manual, Automático..."
                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
         </div>
         <div>
-            <label class="block text-xs text-zinc-400 mb-1">Combustível</label>
-            <input name="fuel" value="{{ vehicle.fuel if vehicle else '' }}" placeholder="Flex, Diesel..."
+            <label class="block text-xs text-zinc-400 mb-1">Combustível *</label>
+            <input name="fuel" required value="{{ vehicle.fuel if vehicle else '' }}" placeholder="Flex, Diesel..."
                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
         </div>
         <div>
-            <label class="block text-xs text-zinc-400 mb-1">Cor</label>
-            <input name="color" value="{{ vehicle.color if vehicle else '' }}"
+            <label class="block text-xs text-zinc-400 mb-1">Cor *</label>
+            <input name="color" required value="{{ vehicle.color if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Cidade</label>
+            <input name="cidade" value="{{ vehicle.cidade if vehicle else '' }}" placeholder="São Paulo - SP"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Final de placa</label>
+            <input name="final_placa" value="{{ vehicle.final_placa if vehicle else '' }}" maxlength="1"
                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
         </div>
         <div>
@@ -95,9 +105,34 @@
     </div>
 
     <div>
-        <label class="block text-xs text-zinc-400 mb-1">Destaques (um por linha)</label>
-        <textarea name="highlights" rows="4"
-                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">{{ vehicle.highlights()|join('\n') if vehicle else '' }}</textarea>
+        <label class="block text-xs text-zinc-400 mb-2">Informações adicionais</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {% for field_name, field_label in yes_no_fields %}
+            <label class="flex items-center gap-2 text-sm text-zinc-300 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2">
+                <input type="checkbox" name="{{ field_name }}" {{ "checked" if vehicle and vehicle[field_name] else "" }}
+                       class="accent-amber-450">
+                {{ field_label }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div>
+        <label class="block text-xs text-zinc-400 mb-2">Itens do veículo</label>
+        {% set current_highlights = vehicle.highlights() if vehicle else [] %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {% for item in highlight_options %}
+            <label class="flex items-center gap-2 text-sm text-zinc-300">
+                <input type="checkbox" name="highlights" value="{{ item }}" {{ "checked" if item in current_highlights else "" }}
+                       class="accent-amber-450">
+                {{ item }}
+            </label>
+            {% endfor %}
+        </div>
+        <label class="block text-xs text-zinc-400 mt-4 mb-1">Outros itens (um por linha, opcional)</label>
+        {% set extra_highlights = current_highlights|reject("in", highlight_options)|list %}
+        <textarea name="outros_destaques" rows="2"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">{{ extra_highlights|join('\n') }}</textarea>
     </div>
 
     <div>

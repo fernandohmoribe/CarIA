@@ -76,3 +76,21 @@ def test_detalhes_veiculo_vendido_devolve_mesmo_formato_de_nao_encontrado():
     inexistente = inventory.detalhes_veiculo(dealership_id=dealership.id, slug="slug-que-nunca-existiu")
 
     assert oculto == inexistente == {"erro": "Veículo não encontrado na nossa base de dados."}
+
+
+def test_detalhes_veiculo_retorna_campos_estruturados_novos():
+    db = SessionLocal()
+    dealership = _make_dealership(db, "Loja Inventory Campos Novos")
+    vehicle = _make_vehicle(
+        db, dealership.id, brand="Toyota", model="Hilux Campos Novos",
+        cidade="São Paulo - SP", final_placa="3", blindado=True, aceita_troca=True,
+        garantia_fabrica=False,
+    )
+
+    resultado = inventory.detalhes_veiculo(dealership_id=dealership.id, slug=vehicle.slug)
+
+    assert resultado["cidade"] == "São Paulo - SP"
+    assert resultado["final_placa"] == "3"
+    assert resultado["blindado"] is True
+    assert resultado["aceita_troca"] is True
+    assert resultado["garantia_fabrica"] is False

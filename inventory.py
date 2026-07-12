@@ -98,6 +98,15 @@ def _detail(v: Vehicle) -> dict:
             "spec": v.spec,
             "overview": v.overview,
             "destaques": v.highlights(),
+            "cidade": v.cidade,
+            "final_placa": v.final_placa,
+            "blindado": v.blindado,
+            "aceita_troca": v.aceita_troca,
+            "unico_dono": v.unico_dono,
+            "revisoes_pela_concessionaria": v.revisoes_concessionaria,
+            "ipva_pago": v.ipva_pago,
+            "licenciado": v.licenciado,
+            "garantia_fabrica": v.garantia_fabrica,
         }
     )
     return data
