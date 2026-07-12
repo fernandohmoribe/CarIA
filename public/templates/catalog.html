@@ -4,29 +4,29 @@
 
 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
     <div>
-        <h1 class="text-2xl font-semibold text-zinc-100">Nossos veículos</h1>
+        <h1 class="text-2xl font-semibold text-zinc-900">Nossos veículos</h1>
         <p class="text-zinc-500 text-sm mt-1">{{ vehicles|length }} veículo(s) disponível(is)</p>
     </div>
     <input id="search" type="text" placeholder="Buscar marca ou modelo..."
-           class="bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm w-full sm:w-64 focus:outline-none focus:border-amber-450"
+           class="bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm w-full sm:w-64 focus:outline-none focus:border-brand"
            onkeyup="filterVehicles(this.value)">
 </div>
 
 <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
     {% for v in vehicles %}
-    <a href="/veiculos/{{ v.slug }}" class="vehicle-card block bg-[#111113] border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition"
+    <a href="/veiculos/{{ v.slug }}" class="vehicle-card block bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition"
        data-search="{{ (v.brand ~ ' ' ~ v.model ~ ' ' ~ (v.version or ''))|lower }}">
         <img src="{{ img_src(v.cover_local_path, v.cover_image_url, 1000, 750) }}" loading="lazy"
-             class="w-full h-44 object-cover bg-zinc-900" alt="{{ v.brand }} {{ v.model }}">
+             class="w-full h-44 object-cover bg-zinc-100" alt="{{ v.brand }} {{ v.model }}">
         <div class="p-4">
-            <h3 class="font-semibold text-zinc-100">{{ v.brand }} {{ v.model }}</h3>
+            <h3 class="font-semibold text-zinc-900">{{ v.brand }} {{ v.model }}</h3>
             <p class="text-zinc-500 text-xs mb-2">{{ v.version or "" }}</p>
-            <p class="text-emerald-400 font-semibold">R$ {{ v.price|brl }}</p>
-            <p class="text-zinc-400 text-xs mt-1">{{ v.year }} · {{ "{:,}".format(v.mileage or 0).replace(",", ".") }} km · {{ v.transmission }}</p>
+            <p class="text-brand font-bold text-lg">R$ {{ v.price|brl }}</p>
+            <p class="text-zinc-500 text-xs mt-1">{{ v.year }} · {{ "{:,}".format(v.mileage or 0).replace(",", ".") }} km · {{ v.transmission }}</p>
         </div>
     </a>
     {% else %}
-    <p class="text-zinc-600 text-sm col-span-full text-center py-10">Nenhum veículo disponível no momento.</p>
+    <p class="text-zinc-500 text-sm col-span-full text-center py-10">Nenhum veículo disponível no momento.</p>
     {% endfor %}
 </div>
 

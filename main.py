@@ -64,6 +64,7 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY)
 MEDIA_ROOT = Path(__file__).parent / "media"
 os.makedirs("media", exist_ok=True)
 app.mount("/media", StaticFiles(directory="media"), name="media")
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 from admin.routes import router as admin_router  # noqa: E402  (depende do app/middleware acima)
 from public.routes import router as public_router  # noqa: E402  (idem)

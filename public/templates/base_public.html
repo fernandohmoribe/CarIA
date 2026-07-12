@@ -4,27 +4,64 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Veículos{% endblock %} — {{ dealership_name }}</title>
+    <link rel="shortcut icon" href="/static/favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        tailwind.config = { theme: { extend: { colors: { amber: { 450: '#f5b942' } } } } }
+        tailwind.config = { theme: { extend: { colors: { brand: { DEFAULT: '#ee353e', dark: '#c22029' } } } } }
     </script>
     <style>
-        body { background: #0a0a0c; }
+        body { background: #f4f4f5; }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
     </style>
 </head>
-<body class="bg-[#0a0a0c] text-zinc-200 min-h-screen">
-    <header class="border-b border-zinc-800 px-6 py-4">
-        <a href="/veiculos" class="text-lg font-semibold text-amber-450 tracking-wide">🚘 {{ dealership_name }}</a>
+<body class="bg-zinc-100 text-zinc-800 min-h-screen">
+    <header class="bg-black px-4 sm:px-6 py-3">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <a href="/veiculos"><img src="/static/logo.png" alt="{{ dealership_name }}" class="h-10"></a>
+            {% if whatsapp_link %}
+            <a href="{{ whatsapp_link }}" target="_blank" rel="noopener"
+               class="hidden sm:flex items-center gap-2 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-dark transition">
+                📞 {{ dealership_phone }}
+            </a>
+            {% endif %}
+        </div>
     </header>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="border-t border-zinc-800 px-6 py-6 mt-10 text-center text-zinc-600 text-xs">
-        {{ dealership_name }}
+    <footer class="bg-zinc-900 text-zinc-400 mt-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 sm:grid-cols-3 gap-8 text-sm">
+            <div>
+                <h3 class="text-white font-semibold text-xs tracking-wide mb-3">QUEM SOMOS</h3>
+                <p class="leading-relaxed text-zinc-400">{{ quem_somos }}</p>
+            </div>
+            {% if dealership_phone %}
+            <div>
+                <h3 class="text-white font-semibold text-xs tracking-wide mb-3">CONTATO</h3>
+                <p>📞 {{ dealership_phone }}</p>
+            </div>
+            {% endif %}
+            {% if dealership_address %}
+            <div>
+                <h3 class="text-white font-semibold text-xs tracking-wide mb-3">ENDEREÇO</h3>
+                <p>{{ dealership_address }}</p>
+            </div>
+            {% endif %}
+        </div>
+        <div class="border-t border-zinc-800 px-6 py-4 text-center text-xs text-zinc-500">
+            {{ dealership_name }}
+        </div>
     </footer>
+
+    {% if whatsapp_link %}
+    <a href="{{ whatsapp_link }}" target="_blank" rel="noopener"
+       class="fixed bottom-5 right-5 bg-[#25D366] text-white rounded-full w-14 h-14 flex items-center justify-center text-2xl shadow-lg hover:brightness-95 transition z-50"
+       aria-label="Falar no WhatsApp">
+        💬
+    </a>
+    {% endif %}
 </body>
 </html>

@@ -132,3 +132,14 @@ def test_interest_form_rate_limited_after_too_many_submissions():
         )
         last_status = resp.status_code
     assert last_status == 429
+
+
+def test_catalog_uses_real_logo_asset():
+    client = TestClient(app)
+    resp = client.get("/veiculos")
+    assert resp.status_code == 200
+    assert '<img src="/static/logo.png"' in resp.text
+
+    resp = client.get("/static/logo.png")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"

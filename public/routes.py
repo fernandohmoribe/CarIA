@@ -21,7 +21,15 @@ from database import (
     get_public_vehicles,
     update_lead,
 )
-from dealership_config import DEALERSHIP_NAME
+from dealership_config import DEALERSHIP_ADDRESS, DEALERSHIP_NAME, DEALERSHIP_PHONE
+
+QUEM_SOMOS = (
+    "Somos especializados na venda de veículos novos e usados, nacionais e importados. Com "
+    "certeza você não só apreciará como irá comprar seu veículo conosco. Todos nossos veículos "
+    "são revisados criteriosamente, possibilitando dar aos nossos clientes tranquilidade na "
+    "hora da compra. Não perca tempo! Compre seu veículo com quem mais entende do assunto. "
+    "Nossos vendedores terão o prazer em atendê-lo."
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -31,9 +39,23 @@ INTEREST_RATE_LIMIT_MAX = 5
 INTEREST_RATE_LIMIT_WINDOW = 60
 INTEREST_RATE_LIMIT_BLOCK = 300
 
+_whatsapp_digits = re.sub(r"\D", "", DEALERSHIP_PHONE)
+WHATSAPP_LINK = f"https://wa.me/55{_whatsapp_digits}" if _whatsapp_digits else None
+
 
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+def _base_context(request: Request) -> dict:
+    return {
+        "request": request,
+        "dealership_name": DEALERSHIP_NAME,
+        "dealership_phone": DEALERSHIP_PHONE,
+        "dealership_address": DEALERSHIP_ADDRESS,
+        "quem_somos": QUEM_SOMOS,
+        "whatsapp_link": WHATSAPP_LINK,
+    }
 
 
 @router.get("/veiculos", response_class=HTMLResponse)
@@ -43,8 +65,7 @@ async def catalog_list(request: Request):
         dealership = get_default_dealership(db)
         vehicles = get_public_vehicles(db, dealership.id if dealership else None)
         return templates.TemplateResponse(
-            "catalog.html",
-            {"request": request, "vehicles": vehicles, "dealership_name": DEALERSHIP_NAME},
+            "catalog.html", {**_base_context(request), "vehicles": vehicles}
         )
     finally:
         db.close()
@@ -59,8 +80,7 @@ async def catalog_detail(request: Request, slug: str):
         if not vehicle:
             return HTMLResponse("Veículo não encontrado.", status_code=404)
         return templates.TemplateResponse(
-            "vehicle_detail.html",
-            {"request": request, "vehicle": vehicle, "dealership_name": DEALERSHIP_NAME, "enviado": False},
+            "vehicle_detail.html", {**_base_context(request), "vehicle": vehicle, "enviado": False}
         )
     finally:
         db.close()
@@ -91,13 +111,7 @@ async def catalog_interesse(request: Request, slug: str):
         if not nome or not phone_number:
             return templates.TemplateResponse(
                 "vehicle_detail.html",
-                {
-                    "request": request,
-                    "vehicle": vehicle,
-                    "dealership_name": DEALERSHIP_NAME,
-                    "enviado": False,
-                    "erro": "Preencha ao menos nome e telefone.",
-                },
+                {**_base_context(request), "vehicle": vehicle, "enviado": False, "erro": "Preencha ao menos nome e telefone."},
                 status_code=400,
             )
 
@@ -118,8 +132,7 @@ async def catalog_interesse(request: Request, slug: str):
         )
 
         return templates.TemplateResponse(
-            "vehicle_detail.html",
-            {"request": request, "vehicle": vehicle, "dealership_name": DEALERSHIP_NAME, "enviado": True},
+            "vehicle_detail.html", {**_base_context(request), "vehicle": vehicle, "enviado": True}
         )
     finally:
         db.close()
