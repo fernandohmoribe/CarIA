@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Veículos{% endblock %} — {{ dealership_name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { amber: { 450: '#f5b942' } } } } }
+    </script>
+    <style>
+        body { background: #0a0a0c; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-[#0a0a0c] text-zinc-200 min-h-screen">
+    <header class="border-b border-zinc-800 px-6 py-4">
+        <a href="/veiculos" class="text-lg font-semibold text-amber-450 tracking-wide">🚘 {{ dealership_name }}</a>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="border-t border-zinc-800 px-6 py-6 mt-10 text-center text-zinc-600 text-xs">
+        {{ dealership_name }}
+    </footer>
+</body>
+</html>

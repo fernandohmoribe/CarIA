@@ -1,0 +1,66 @@
+{% extends "base_public.html" %}
+{% block title %}{{ vehicle.brand }} {{ vehicle.model }}{% endblock %}
+{% block content %}
+
+<a href="/veiculos" class="text-zinc-500 text-sm hover:text-zinc-300">← Voltar pros veículos</a>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+    <div>
+        {% set cover_src = img_src(vehicle.cover_local_path, vehicle.cover_image_url, 1000, 750) %}
+        <img id="main-photo" src="{{ cover_src }}" class="w-full rounded-2xl bg-zinc-900 object-cover" style="aspect-ratio: 4/3;" alt="{{ vehicle.brand }} {{ vehicle.model }}">
+        {% if vehicle.images|length > 1 %}
+        <div class="flex gap-2 mt-2 overflow-x-auto pb-1">
+            {% for img in vehicle.images %}
+            <img src="{{ img_src(img.local_path, img.image_url, 1000, 750) }}" loading="lazy"
+                 class="w-20 h-16 object-cover rounded-lg flex-shrink-0 opacity-70 hover:opacity-100 transition cursor-pointer"
+                 onclick="document.getElementById('main-photo').src = this.src">
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div>
+        <h1 class="text-2xl font-semibold text-zinc-100">{{ vehicle.brand }} {{ vehicle.model }}</h1>
+        <p class="text-zinc-500 text-sm mt-1">{{ vehicle.version or "" }}</p>
+        <p class="text-emerald-400 text-2xl font-semibold mt-3">R$ {{ vehicle.price|brl }}</p>
+        <p class="text-zinc-400 text-sm mt-2">
+            {{ vehicle.year }} · {{ "{:,}".format(vehicle.mileage or 0).replace(",", ".") }} km ·
+            {{ vehicle.transmission }} · {{ vehicle.fuel }} · {{ vehicle.color }}
+        </p>
+
+        {% if vehicle.overview %}
+        <p class="text-zinc-300 text-sm mt-4 whitespace-pre-line leading-relaxed">{{ vehicle.overview }}</p>
+        {% endif %}
+
+        {% if vehicle.highlights() %}
+        <ul class="text-zinc-400 text-sm mt-4 space-y-1 list-disc list-inside">
+            {% for h in vehicle.highlights() %}
+            <li>{{ h }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-5 mt-6">
+            {% if enviado %}
+            <p class="text-emerald-400 text-sm">✅ Recebemos seu interesse! Em breve alguém da nossa equipe entra em contato.</p>
+            {% else %}
+            <h2 class="text-sm font-semibold text-zinc-300 mb-3">Tenho interesse nesse veículo</h2>
+            {% if erro %}
+            <p class="text-red-400 text-xs mb-3">{{ erro }}</p>
+            {% endif %}
+            <form method="post" action="/veiculos/{{ vehicle.slug }}/interesse" class="space-y-3">
+                <input name="nome" required placeholder="Seu nome"
+                       class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600">
+                <input name="telefone" required placeholder="Telefone (com DDD)"
+                       class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600">
+                <input name="email" type="email" placeholder="E-mail (opcional)"
+                       class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600">
+                <button type="submit" class="w-full bg-amber-450 text-black font-medium rounded-lg py-2 text-sm hover:brightness-110 transition">
+                    Quero saber mais
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

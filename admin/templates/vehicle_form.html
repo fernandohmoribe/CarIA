@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}{{ "Editar veículo" if vehicle else "Cadastrar veículo" }}{% endblock %}
+{% block content %}
+
+<a href="/admin/vehicles" class="text-zinc-500 text-sm hover:text-zinc-300">← Voltar pra veículos</a>
+
+<h1 class="text-2xl font-semibold text-zinc-100 mt-4 mb-6">
+    {{ "Editar veículo" if vehicle else "Cadastrar veículo" }}
+</h1>
+
+<form method="post"
+      action="{{ '/admin/vehicles/' ~ vehicle.slug ~ '/editar' if vehicle else '/admin/vehicles/novo' }}"
+      enctype="multipart/form-data"
+      class="bg-[#111113] border border-zinc-800 rounded-2xl p-6 max-w-3xl space-y-5">
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Marca *</label>
+            <input name="brand" required value="{{ vehicle.brand if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Modelo *</label>
+            <input name="model" required value="{{ vehicle.model if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Versão</label>
+            <input name="version" value="{{ vehicle.version if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Ano</label>
+            <input name="year" type="number" value="{{ vehicle.year if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Preço (R$)</label>
+            <input name="price" type="number" step="0.01" value="{{ vehicle.price if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Quilometragem</label>
+            <input name="mileage" type="number" value="{{ vehicle.mileage if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Carroceria</label>
+            <input name="body" value="{{ vehicle.body if vehicle else '' }}" placeholder="SUV, Sedã, Picape..."
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Câmbio</label>
+            <input name="transmission" value="{{ vehicle.transmission if vehicle else '' }}" placeholder="Manual, Automático..."
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Combustível</label>
+            <input name="fuel" value="{{ vehicle.fuel if vehicle else '' }}" placeholder="Flex, Diesel..."
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Cor</label>
+            <input name="color" value="{{ vehicle.color if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Código interno</label>
+            <input name="code" value="{{ vehicle.code if vehicle else '' }}"
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Status</label>
+            <select name="status" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+                {% for opt in ["Disponivel", "Reservado", "Vendido"] %}
+                <option value="{{ opt }}" {{ "selected" if vehicle and vehicle.status == opt else "" }}>{{ opt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs text-zinc-400 mb-1">Publicação</label>
+            <select name="publication_status" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+                {% for opt in ["Publicado", "Rascunho"] %}
+                <option value="{{ opt }}" {{ "selected" if vehicle and vehicle.publication_status == opt else "" }}>{{ opt }}</option>
+                {% endfor %}
+            </select>
+            <p class="text-zinc-600 text-xs mt-1">Rascunho ou Vendido não aparecem pro bot nem no catálogo público.</p>
+        </div>
+    </div>
+
+    <div>
+        <label class="block text-xs text-zinc-400 mb-1">Descrição</label>
+        <textarea name="overview" rows="4"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">{{ vehicle.overview if vehicle else '' }}</textarea>
+    </div>
+
+    <div>
+        <label class="block text-xs text-zinc-400 mb-1">Destaques (um por linha)</label>
+        <textarea name="highlights" rows="4"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">{{ vehicle.highlights()|join('\n') if vehicle else '' }}</textarea>
+    </div>
+
+    <div>
+        <label class="block text-xs text-zinc-400 mb-1">Fotos</label>
+        <input name="photos" type="file" accept="image/*" multiple
+               class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        {% if vehicle and vehicle.images %}
+        <p class="text-zinc-600 text-xs mt-1">
+            Já tem {{ vehicle.images|length }} foto(s) cadastrada(s) — só envie arquivo aqui se quiser substituir todas.
+        </p>
+        {% endif %}
+    </div>
+
+    <button type="submit" class="bg-amber-450 text-black font-medium rounded-lg px-5 py-2.5 text-sm hover:brightness-110 transition">
+        {{ "Salvar alterações" if vehicle else "Cadastrar veículo" }}
+    </button>
+</form>
+{% endblock %}

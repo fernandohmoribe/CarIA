@@ -24,10 +24,16 @@ from database import (
     get_lead_by_id,
     get_lead_historico,
     get_or_create_user,
+    get_vehicle_by_slug,
+    replace_vehicle_images,
     save_conversation,
     set_lead_status,
+    upsert_vehicle,
 )
 from dealership_config import to_local
+from image_utils import resize_and_save_webp
+from slugify import generate_unique_slug
+import template_helpers
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -35,6 +41,8 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 LOGIN_RATE_LIMIT_MAX = 5
 LOGIN_RATE_LIMIT_WINDOW = 60
 LOGIN_RATE_LIMIT_BLOCK = 300
+
+MEDIA_ROOT = Path(__file__).parent.parent / "media"
 
 
 def _local_time(dt, fmt: str = "%d/%m/%Y %H:%M", default: str = "—") -> str:
@@ -44,35 +52,7 @@ def _local_time(dt, fmt: str = "%d/%m/%Y %H:%M", default: str = "—") -> str:
 
 
 templates.env.filters["local_time"] = _local_time
-
-
-def _transform(url: str, width: int, height: int, quality: int = 65) -> str:
-    """Usa a API de transformação de imagem do Supabase pra servir thumbnails leves."""
-    marker = "/storage/v1/object/public/"
-    idx = url.find(marker) if url else -1
-    if idx == -1:
-        return url
-    base = url[:idx]
-    rest = url[idx + len(marker):]
-    return f"{base}/storage/v1/render/image/public/{rest}?width={width}&height={height}&resize=cover&quality={quality}"
-
-
-def _brl(value) -> str:
-    if value is None:
-        return "0,00"
-    formatted = f"{value:,.2f}"
-    return formatted.replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def _img_src(local_path: str, remote_url: str, width: int, height: int, quality: int = 65) -> str:
-    """Prefere a foto já baixada em media/ — só cai pro Supabase se ainda não tiver sido baixada."""
-    if local_path:
-        return f"/media/{local_path}"
-    return _transform(remote_url, width, height, quality)
-
-
-templates.env.filters["brl"] = _brl
-templates.env.globals["img_src"] = _img_src
+template_helpers.register(templates)
 
 
 @router.get("/")
@@ -166,6 +146,146 @@ async def vehicles_page(request: Request):
         return templates.TemplateResponse(
             "vehicles.html", {"request": request, "vehicles": vehicles, "dealership": dealership}
         )
+    finally:
+        db.close()
+
+
+@router.get("/vehicles/novo")
+async def vehicle_new_form(request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    return templates.TemplateResponse("vehicle_form.html", {"request": request, "vehicle": None})
+
+
+@router.get("/vehicles/{slug}/editar")
+async def vehicle_edit_form(request: Request, slug: str):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        vehicle = get_vehicle_by_slug(db, dealership.id if dealership else None, slug)
+        if not vehicle:
+            return RedirectResponse(url="/admin/vehicles", status_code=302)
+        return templates.TemplateResponse("vehicle_form.html", {"request": request, "vehicle": vehicle})
+    finally:
+        db.close()
+
+
+async def _save_vehicle_form(request: Request, existing_slug: str | None) -> RedirectResponse:
+    form = await request.form()
+
+    def _f(name, cast=str, default=None):
+        value = form.get(name)
+        if value is None or value == "":
+            return default
+        try:
+            return cast(value)
+        except (TypeError, ValueError):
+            return default
+
+    highlights = [line.strip() for line in (form.get("highlights") or "").splitlines() if line.strip()]
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        dealership_id = dealership.id if dealership else None
+
+        brand = _f("brand", default="")
+        model = _f("model", default="")
+        version = _f("version")
+        year = _f("year", int)
+
+        if existing_slug:
+            slug = existing_slug
+        else:
+            slug = generate_unique_slug(db, dealership_id, brand, model, version, year)
+
+        data = {
+            "slug": slug,
+            "brand": brand,
+            "model": model,
+            "version": version,
+            "year": year,
+            "price": _f("price", float),
+            "mileage": _f("mileage", int),
+            "status": _f("status", default="Disponivel"),
+            "publication_status": _f("publication_status", default="Publicado"),
+            "body": _f("body"),
+            "transmission": _f("transmission"),
+            "fuel": _f("fuel"),
+            "color": _f("color"),
+            "spec": _f("spec"),
+            "overview": _f("overview"),
+            "code": _f("code"),
+            "highlights": highlights,
+        }
+        vehicle = upsert_vehicle(db, dealership_id, data)
+
+        photos = [p for p in form.getlist("photos") if getattr(p, "filename", "")]
+        if photos:
+            images = []
+            for i, photo in enumerate(photos):
+                content_type = photo.content_type or ""
+                if not content_type.startswith("image/"):
+                    continue
+                content = await photo.read()
+                if len(content) > 15 * 1024 * 1024:  # 15MB, evita decodificar arquivo gigante
+                    continue
+                rel_path = f"vehicles/{slug}/{i}.webp"
+                resize_and_save_webp(content, MEDIA_ROOT / rel_path)
+                images.append(
+                    {
+                        "image_url": f"/media/{rel_path}",
+                        "local_path": rel_path,
+                        "is_cover": i == 0,
+                        "sort_order": i,
+                    }
+                )
+            if images:
+                replace_vehicle_images(db, vehicle.id, images)
+
+        return RedirectResponse(url="/admin/vehicles", status_code=302)
+    finally:
+        db.close()
+
+
+@router.post("/vehicles/novo")
+async def vehicle_create(request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    return await _save_vehicle_form(request, existing_slug=None)
+
+
+@router.post("/vehicles/{slug}/editar")
+async def vehicle_edit(request: Request, slug: str):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    return await _save_vehicle_form(request, existing_slug=slug)
+
+
+@router.post("/vehicles/{slug}/excluir")
+async def vehicle_delete(request: Request, slug: str):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    import shutil
+
+    db = SessionLocal()
+    try:
+        dealership = get_default_dealership(db)
+        vehicle = get_vehicle_by_slug(db, dealership.id if dealership else None, slug)
+        if vehicle:
+            db.delete(vehicle)
+            db.commit()
+            shutil.rmtree(MEDIA_ROOT / "vehicles" / slug, ignore_errors=True)
+        return RedirectResponse(url="/admin/vehicles", status_code=302)
     finally:
         db.close()
 
@@ -426,7 +546,7 @@ async def test_chat_send(request: Request):
     # No WhatsApp real isso vai pelo WAHA (main.py:send_vehicle_photos) — aqui, como é uma
     # página web, mostra a imagem direto na tela em vez de simular um envio que não existe.
     photo_urls = [
-        _img_src(foto.get("local_path"), foto.get("url"), 600, 450)
+        template_helpers.img_src(foto.get("local_path"), foto.get("url"), 600, 450)
         for foto in (photos.get("fotos", []) if photos else [])
     ]
 

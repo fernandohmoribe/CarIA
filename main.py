@@ -66,8 +66,10 @@ os.makedirs("media", exist_ok=True)
 app.mount("/media", StaticFiles(directory="media"), name="media")
 
 from admin.routes import router as admin_router  # noqa: E402  (depende do app/middleware acima)
+from public.routes import router as public_router  # noqa: E402  (idem)
 
 app.include_router(admin_router)
+app.include_router(public_router)
 
 # ---------------------------------------------------------------------------
 # Proteções anti-abuso

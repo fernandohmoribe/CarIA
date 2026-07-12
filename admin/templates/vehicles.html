@@ -7,9 +7,15 @@
         <h1 class="text-2xl font-semibold text-zinc-100">Veículos</h1>
         <p class="text-zinc-500 text-sm mt-1">{{ vehicles|length }} veículo(s) disponível(is) — sincronizados do sistema da loja</p>
     </div>
-    <input id="search" type="text" placeholder="Buscar marca ou modelo..."
-           class="bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm w-full sm:w-64 focus:outline-none focus:border-amber-450"
-           onkeyup="filterVehicles(this.value)">
+    <div class="flex gap-2 w-full sm:w-auto">
+        <input id="search" type="text" placeholder="Buscar marca ou modelo..."
+               class="bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm w-full sm:w-64 focus:outline-none focus:border-amber-450"
+               onkeyup="filterVehicles(this.value)">
+        <a href="/admin/vehicles/novo"
+           class="shrink-0 bg-amber-450 text-black font-medium rounded-lg px-4 py-2 text-sm hover:brightness-110 transition whitespace-nowrap">
+            + Cadastrar veículo
+        </a>
+    </div>
 </div>
 
 <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -38,6 +44,13 @@
                 <p class="mt-2 italic text-zinc-500">{{ v.highlights()[0] }}</p>
                 {% endif %}
             </details>
+            <div class="flex gap-2 mt-3 pt-3 border-t border-zinc-800">
+                <a href="/admin/vehicles/{{ v.slug }}/editar" class="text-xs text-amber-450 hover:underline">Editar</a>
+                <form method="post" action="/admin/vehicles/{{ v.slug }}/excluir"
+                      onsubmit="return confirm('Excluir {{ v.brand }} {{ v.model }}? Essa ação não pode ser desfeita.');">
+                    <button type="submit" class="text-xs text-red-400 hover:underline">Excluir</button>
+                </form>
+            </div>
         </div>
     </div>
     {% endfor %}

@@ -42,3 +42,37 @@ def test_buscar_veiculos_termo_sem_correspondencia_retorna_vazio():
     resultado = inventory.buscar_veiculos(dealership_id=dealership.id, termo="Ferrari F40")
 
     assert resultado == {"resultado": "Nenhum veículo encontrado no nosso estoque com esses filtros."}
+
+
+def test_buscar_veiculos_nao_retorna_veiculo_vendido():
+    db = SessionLocal()
+    dealership = _make_dealership(db, "Loja Inventory Vendido")
+    _make_vehicle(db, dealership.id, brand="Fiat", model="Uno Vendido Teste", status="Vendido")
+    _make_vehicle(db, dealership.id, brand="Fiat", model="Uno Disponivel Teste")
+
+    resultado = inventory.buscar_veiculos(dealership_id=dealership.id, marca="Fiat")
+
+    modelos = [v["modelo"] for v in resultado]
+    assert "Uno Disponivel Teste" in modelos
+    assert "Uno Vendido Teste" not in modelos
+
+
+def test_buscar_veiculos_nao_retorna_veiculo_rascunho():
+    db = SessionLocal()
+    dealership = _make_dealership(db, "Loja Inventory Rascunho")
+    _make_vehicle(db, dealership.id, brand="Fiat", model="Argo Rascunho Teste", publication_status="Rascunho")
+
+    resultado = inventory.buscar_veiculos(dealership_id=dealership.id, marca="Fiat", termo="Argo Rascunho Teste")
+
+    assert resultado == {"resultado": "Nenhum veículo encontrado no nosso estoque com esses filtros."}
+
+
+def test_detalhes_veiculo_vendido_devolve_mesmo_formato_de_nao_encontrado():
+    db = SessionLocal()
+    dealership = _make_dealership(db, "Loja Inventory Detalhe Oculto")
+    vehicle = _make_vehicle(db, dealership.id, brand="Honda", model="Civic Oculto Teste", status="Vendido")
+
+    oculto = inventory.detalhes_veiculo(dealership_id=dealership.id, slug=vehicle.slug)
+    inexistente = inventory.detalhes_veiculo(dealership_id=dealership.id, slug="slug-que-nunca-existiu")
+
+    assert oculto == inexistente == {"erro": "Veículo não encontrado na nossa base de dados."}

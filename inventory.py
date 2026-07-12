@@ -7,7 +7,7 @@ de origem em tempo real. O banco local é mantido pelo sync_inventory.py.
 
 import re
 
-from database import SessionLocal, Vehicle, get_vehicle_by_slug
+from database import SessionLocal, Vehicle, get_public_vehicle_by_slug
 
 TOOLS = [
     {
@@ -118,7 +118,11 @@ def buscar_veiculos(
 
     db = SessionLocal()
     try:
-        q = db.query(Vehicle).filter(Vehicle.dealership_id == dealership_id)
+        q = db.query(Vehicle).filter(
+            Vehicle.dealership_id == dealership_id,
+            Vehicle.status == "Disponivel",
+            Vehicle.publication_status == "Publicado",
+        )
         if termo:
             # Separa em qualquer caractere não-alfanumérico, não só espaço — "Mercedes-Benz"
             # (hífen) precisa virar ["Mercedes", "Benz"], senão não bate com o brand "Mercedes
@@ -157,7 +161,7 @@ def buscar_veiculos(
 def detalhes_veiculo(dealership_id: int, slug: str) -> dict:
     db = SessionLocal()
     try:
-        vehicle = get_vehicle_by_slug(db, dealership_id, slug)
+        vehicle = get_public_vehicle_by_slug(db, dealership_id, slug)
         if not vehicle:
             return {"erro": "Veículo não encontrado na nossa base de dados."}
         return _detail(vehicle)
@@ -170,7 +174,7 @@ def listar_fotos_veiculo(dealership_id: int, slug: str) -> dict:
     como fallback) pra envio real via WhatsApp — nunca pra exibir como link em texto."""
     db = SessionLocal()
     try:
-        vehicle = get_vehicle_by_slug(db, dealership_id, slug)
+        vehicle = get_public_vehicle_by_slug(db, dealership_id, slug)
         if not vehicle:
             return {"erro": "Veículo não encontrado na nossa base de dados.", "fotos": []}
         if not vehicle.images:

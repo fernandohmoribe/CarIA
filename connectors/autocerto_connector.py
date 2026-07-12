@@ -10,13 +10,13 @@ pra enumerar as URLs de detalhe, porque fotos/specs só existem lá mesmo.
 
 from __future__ import annotations
 
-import io
 import re
 from collections import defaultdict
 
 import httpx
 from bs4 import BeautifulSoup
-from PIL import Image
+
+from image_utils import resize_and_save_webp
 
 from connectors.base import VehicleSourceConnector
 
@@ -282,10 +282,7 @@ class AutoCertoVehicleConnector(VehicleSourceConnector):
         try:
             resp = httpx.get(image_url, timeout=self.timeout)
             resp.raise_for_status()
-            img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-            img.thumbnail((width, height))
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            img.save(dest_path, format="WEBP", quality=quality)
+            resize_and_save_webp(resp.content, dest_path, width, height, quality)
             return True
         except (httpx.HTTPError, OSError):
             return False

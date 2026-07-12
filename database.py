@@ -359,6 +359,7 @@ def replace_vehicle_images(db, vehicle_id: int, images: list) -> None:
             VehicleImage(
                 vehicle_id=vehicle_id,
                 image_url=img["image_url"],
+                local_path=img.get("local_path"),
                 is_cover=img.get("is_cover", False),
                 sort_order=img.get("sort_order", 0),
             )
@@ -379,6 +380,37 @@ def get_vehicle_by_slug(db, dealership_id: int, slug: str) -> Vehicle | None:
     return (
         db.query(Vehicle)
         .filter(Vehicle.dealership_id == dealership_id, Vehicle.slug == slug)
+        .first()
+    )
+
+
+def get_public_vehicles(db, dealership_id: int) -> list[Vehicle]:
+    """Só veículos disponíveis e publicados — usado pelo catálogo público e (via
+    inventory.py) pelo bot, nunca pela listagem do admin (que precisa ver rascunho/vendido)."""
+    return (
+        db.query(Vehicle)
+        .filter(
+            Vehicle.dealership_id == dealership_id,
+            Vehicle.status == "Disponivel",
+            Vehicle.publication_status == "Publicado",
+        )
+        .order_by(Vehicle.brand.asc(), Vehicle.model.asc())
+        .all()
+    )
+
+
+def get_public_vehicle_by_slug(db, dealership_id: int, slug: str) -> Vehicle | None:
+    """Igual get_vehicle_by_slug, mas só retorna se disponível+publicado — um veículo
+    rascunho/vendido some tanto pra IA quanto pro catálogo público, com a mesma resposta de
+    "não encontrado" que um slug inexistente (não vaza que o veículo existe mas está oculto)."""
+    return (
+        db.query(Vehicle)
+        .filter(
+            Vehicle.dealership_id == dealership_id,
+            Vehicle.slug == slug,
+            Vehicle.status == "Disponivel",
+            Vehicle.publication_status == "Publicado",
+        )
         .first()
     )
 
