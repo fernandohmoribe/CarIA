@@ -217,6 +217,92 @@ def test_catalog_filter_by_carroceria_cambio_combustivel():
     assert "Hatch Filtro Combo" not in resp.text
 
 
+def test_catalog_filter_by_preco_max():
+    dealership_id = _dealership_id()
+    _make_vehicle(dealership_id, "filtro-preco-max-barato", model="Barato Filtro Preco Max", price=50000.0)
+    _make_vehicle(dealership_id, "filtro-preco-max-caro", model="Caro Filtro Preco Max", price=200000.0)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"preco_max": "100000"})
+    assert "Barato Filtro Preco Max" in resp.text
+    assert "Caro Filtro Preco Max" not in resp.text
+
+
+def test_catalog_filter_by_preco_min_and_max_combined():
+    dealership_id = _dealership_id()
+    _make_vehicle(dealership_id, "filtro-preco-combo-baixo", model="Baixo Filtro Preco Combo", price=30000.0)
+    _make_vehicle(dealership_id, "filtro-preco-combo-medio", model="Medio Filtro Preco Combo", price=100000.0)
+    _make_vehicle(dealership_id, "filtro-preco-combo-alto", model="Alto Filtro Preco Combo", price=300000.0)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"preco_min": "50000", "preco_max": "200000"})
+    assert "Medio Filtro Preco Combo" in resp.text
+    assert "Baixo Filtro Preco Combo" not in resp.text
+    assert "Alto Filtro Preco Combo" not in resp.text
+
+
+def test_catalog_form_submit_with_all_fields_blank_does_not_422():
+    """Reproduz o bug real: o form manda preco_min/preco_max="" quando o usuário clica em
+    "Filtrar" sem preencher nada — isso não pode virar erro de validação (422), tem que
+    tratar como "sem filtro" e devolver a lista completa."""
+    dealership_id = _dealership_id()
+    _make_vehicle(dealership_id, "filtro-form-vazio", model="Form Vazio Sem Filtro")
+
+    client = TestClient(app)
+    resp = client.get(
+        "/veiculos",
+        params={"marca": "", "preco_min": "", "preco_max": "", "carroceria": "", "cambio": "", "combustivel": ""},
+    )
+    assert resp.status_code == 200
+    assert "Form Vazio Sem Filtro" in resp.text
+
+
+def test_catalog_filter_with_some_fields_blank_and_others_filled():
+    dealership_id = _dealership_id()
+    _make_vehicle(dealership_id, "filtro-parcial-toyota", brand="Toyota", model="Corolla Filtro Parcial")
+    _make_vehicle(dealership_id, "filtro-parcial-fiat", brand="Fiat", model="Mobi Filtro Parcial")
+
+    client = TestClient(app)
+    resp = client.get(
+        "/veiculos",
+        params={"marca": "Toyota", "preco_min": "", "preco_max": "", "carroceria": "", "cambio": "", "combustivel": ""},
+    )
+    assert resp.status_code == 200
+    assert "Corolla Filtro Parcial" in resp.text
+    assert "Mobi Filtro Parcial" not in resp.text
+
+
+def test_catalog_filter_with_non_numeric_preco_does_not_422():
+    dealership_id = _dealership_id()
+    _make_vehicle(dealership_id, "filtro-preco-invalido", model="Preco Invalido Sem Crash")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"preco_min": "abc"})
+    assert resp.status_code == 200
+    assert "Preco Invalido Sem Crash" in resp.text
+
+
+def test_catalog_no_results_message_when_filters_match_nothing():
+    _dealership_id()
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"marca": "MarcaQueNaoExisteNoBancoDeDados"})
+    assert resp.status_code == 200
+    assert "Nenhum veículo encontrado com esses filtros." in resp.text
+
+
+def test_catalog_filter_dropdowns_populated_from_real_stock():
+    dealership_id = _dealership_id()
+    _make_vehicle(dealership_id, "filtro-opcoes-marca", brand="Chevrolet", model="Onix Filtro Opcoes", body="Sedan", transmission="Automático", fuel="Gasolina")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos")
+    assert resp.status_code == 200
+    assert '<option value="Chevrolet"' in resp.text
+    assert '<option value="Sedan"' in resp.text
+    assert '<option value="Automático"' in resp.text
+    assert '<option value="Gasolina"' in resp.text
+
+
 # ── Admin: Novidades CRUD ────────────────────────────────────────────────
 def test_admin_novidades_requires_login():
     client = TestClient(app)

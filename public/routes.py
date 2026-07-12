@@ -213,10 +213,24 @@ async def novidades_detail(request: Request, slug: str):
         db.close()
 
 
+def _parse_float(value: str | None) -> float | None:
+    """Query string de formulário GET manda "" quando o campo de preço fica vazio — FastAPI
+    rejeitaria isso com 422 se o parâmetro já fosse tipado como float, então recebe como str e
+    faz a conversão aqui, tratando vazio/invalido como "sem filtro"."""
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 @router.get("/veiculos", response_class=HTMLResponse)
-async def catalog_list(request: Request, marca: str | None = None, preco_min: float | None = None,
-                        preco_max: float | None = None, carroceria: str | None = None,
+async def catalog_list(request: Request, marca: str | None = None, preco_min: str | None = None,
+                        preco_max: str | None = None, carroceria: str | None = None,
                         cambio: str | None = None, combustivel: str | None = None):
+    preco_min = _parse_float(preco_min)
+    preco_max = _parse_float(preco_max)
     db = SessionLocal()
     try:
         dealership = get_default_dealership(db)
