@@ -24,11 +24,11 @@
                 {% if not post.publicado %}<span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded">Rascunho</span>{% endif %}
             </div>
             {% if post.resumo %}<p class="text-zinc-500 text-xs mt-1">{{ post.resumo }}</p>{% endif %}
-            <div class="flex gap-2 mt-3 pt-3 border-t border-zinc-800">
+            <div class="flex items-center gap-3 mt-3 pt-3 border-t border-zinc-800">
                 <a href="/admin/novidades/{{ post.slug }}/editar" class="text-xs text-amber-450 hover:underline">Editar</a>
                 <form method="post" action="/admin/novidades/{{ post.slug }}/excluir"
                       onsubmit="return confirm('Excluir {{ post.titulo }}? Essa ação não pode ser desfeita.');">
-                    <button type="submit" class="text-xs text-red-400 hover:underline">Excluir</button>
+                    <button type="submit" class="text-xs text-red-400 hover:underline bg-transparent border-0 p-0 m-0 cursor-pointer appearance-none">Excluir</button>
                 </form>
             </div>
         </div>

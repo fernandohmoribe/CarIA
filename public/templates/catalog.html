@@ -57,7 +57,7 @@
             <h3 class="font-semibold text-zinc-900">{{ v.brand }} {{ v.model }}</h3>
             <p class="text-zinc-500 text-xs mb-2">{{ v.version or "" }}</p>
             <p class="text-brand font-bold text-lg">R$ {{ v.price|brl }}</p>
-            <p class="text-zinc-500 text-xs mt-1">{{ v.year }} · {{ "{:,}".format(v.mileage or 0).replace(",", ".") }} km · {{ v.transmission }}</p>
+            <p class="text-zinc-500 text-xs mt-1">{{ v.year }} · {{ "{:,}".format(v.mileage or 0).replace(",", ".") }} km{% if v.transmission %} · {{ v.transmission }}{% endif %}</p>
         </div>
     </a>
     {% else %}

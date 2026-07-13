@@ -35,20 +35,38 @@
             <h3 class="font-semibold text-zinc-100">{{ v.brand }} {{ v.model }}</h3>
             <p class="text-zinc-500 text-xs mb-2">{{ v.version or "" }}</p>
             <p class="text-emerald-400 font-semibold">R$ {{ v.price|brl }}</p>
-            <p class="text-zinc-400 text-xs mt-1">{{ v.year }} · {{ "{:,}".format(v.mileage or 0).replace(",", ".") }} km · {{ v.transmission }} · {{ v.fuel }} · {{ v.color }}</p>
-            <p class="text-zinc-600 text-xs mt-1">Código: {{ v.code }}</p>
+            {% set meta = [v.transmission, v.fuel, v.color]|select|list %}
+            <p class="text-zinc-400 text-xs mt-1">{{ v.year }} · {{ "{:,}".format(v.mileage or 0).replace(",", ".") }} km{% if meta %} · {{ meta|join(" · ") }}{% endif %}</p>
+            {% if v.code %}<p class="text-zinc-600 text-xs mt-1">Código: {{ v.code }}</p>{% endif %}
+            {% set flags = [
+                ("Blindado", v.blindado), ("Aceita troca", v.aceita_troca), ("Único dono", v.unico_dono),
+                ("Revisões pela concessionária", v.revisoes_concessionaria), ("IPVA pago", v.ipva_pago),
+                ("Licenciado", v.licenciado), ("Garantia de fábrica", v.garantia_fabrica),
+            ] %}
+            {% if v.overview or v.highlights() or flags|selectattr("1")|list %}
             <details class="mt-3 text-xs text-zinc-400">
                 <summary class="cursor-pointer text-amber-450">Detalhes</summary>
+                {% if v.overview %}
                 <p class="mt-2 whitespace-pre-line leading-relaxed">{{ v.overview }}</p>
+                {% endif %}
                 {% if v.highlights() %}
-                <p class="mt-2 italic text-zinc-500">{{ v.highlights()[0] }}</p>
+                <ul class="mt-2 space-y-0.5">
+                    {% for h in v.highlights() %}
+                    <li>• {{ h }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% set true_flags = flags|selectattr("1")|map(attribute="0")|list %}
+                {% if true_flags %}
+                <p class="mt-2 text-zinc-500">✓ {{ true_flags|join(" · ✓ ") }}</p>
                 {% endif %}
             </details>
-            <div class="flex gap-2 mt-3 pt-3 border-t border-zinc-800">
+            {% endif %}
+            <div class="flex items-center gap-3 mt-3 pt-3 border-t border-zinc-800">
                 <a href="/admin/vehicles/{{ v.slug }}/editar" class="text-xs text-amber-450 hover:underline">Editar</a>
                 <form method="post" action="/admin/vehicles/{{ v.slug }}/excluir"
                       onsubmit="return confirm('Excluir {{ v.brand }} {{ v.model }}? Essa ação não pode ser desfeita.');">
-                    <button type="submit" class="text-xs text-red-400 hover:underline">Excluir</button>
+                    <button type="submit" class="text-xs text-red-400 hover:underline bg-transparent border-0 p-0 m-0 cursor-pointer appearance-none">Excluir</button>
                 </form>
             </div>
         </div>
