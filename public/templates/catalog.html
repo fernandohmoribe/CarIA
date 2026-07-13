@@ -35,9 +35,9 @@
             <option value="{{ c }}" {% if filtros.combustivel == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
         </select>
-        <input name="preco_min" type="number" step="1" placeholder="Preço mín." value="{{ filtros.preco_min or '' }}"
+        <input name="preco_min" type="number" step="1" placeholder="Preço mín." value="{{ filtros.preco_min|int if filtros.preco_min is not none else '' }}"
                class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
-        <input name="preco_max" type="number" step="1" placeholder="Preço máx." value="{{ filtros.preco_max or '' }}"
+        <input name="preco_max" type="number" step="1" placeholder="Preço máx." value="{{ filtros.preco_max|int if filtros.preco_max is not none else '' }}"
                class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
     </div>
     <div class="flex items-center gap-3 mt-3">
