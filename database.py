@@ -5,7 +5,7 @@ import hmac
 import json
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -27,52 +27,59 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+def agora_utc() -> datetime:
+    """datetime.utcnow() está deprecated (Python vai remover) — isso dá o mesmo resultado
+    (naive, UTC) sem o aviso, e sem mudar o formato já gravado no banco pra datetime
+    timezone-aware (que quebraria comparação com os valores antigos)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class Base(DeclarativeBase):
     pass
 
 
 # ── Loja (multi-loja pronto, hoje só existe uma linha) ─────────────────────
-class Dealership(Base):
-    __tablename__ = "dealerships"
+class Loja(Base):
+    __tablename__ = "lojas"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     nome = Column(String, nullable=False)
-    connector_type = Column(String, default="supabase")
-    connector_config_json = Column(Text, default="{}")
-    staff_phone = Column(String, default="")
-    last_sync_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    tipo_conector = Column(String, default="supabase")
+    config_conector_json = Column(Text, default="{}")
+    telefone_equipe = Column(String, default="")
+    ultima_sincronizacao = Column(DateTime, nullable=True)
+    criado_em = Column(DateTime, default=agora_utc)
 
-    def connector_config(self) -> dict:
-        return json.loads(self.connector_config_json or "{}")
+    def config_conector(self) -> dict:
+        return json.loads(self.config_conector_json or "{}")
 
 
 # ── Estoque — espelho local, sincronizado pelo sync_inventory.py ──────────
-class Vehicle(Base):
-    __tablename__ = "vehicles"
-    __table_args__ = (UniqueConstraint("dealership_id", "slug", name="uq_vehicle_dealership_slug"),)
+class Veiculo(Base):
+    __tablename__ = "veiculos"
+    __table_args__ = (UniqueConstraint("loja_id", "slug", name="uq_veiculo_loja_slug"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
-    external_id = Column(String, index=True)  # id do veículo no sistema de origem
+    loja_id = Column(Integer, ForeignKey("lojas.id"), index=True)
+    id_externo = Column(String, index=True)  # id do veículo no sistema de origem
     slug = Column(String, index=True)
-    code = Column(String)
-    brand = Column(String, index=True)
-    model = Column(String, index=True)
-    version = Column(String)
-    year = Column(Integer)
-    price = Column(Float)
-    mileage = Column(Integer)
+    codigo = Column(String)
+    marca = Column(String, index=True)
+    modelo = Column(String, index=True)
+    versao = Column(String)
+    ano = Column(Integer)
+    preco = Column(Float)
+    quilometragem = Column(Integer)
     status = Column(String)
-    publication_status = Column(String)
-    body = Column(String)
-    transmission = Column(String)
-    fuel = Column(String)
-    color = Column(String)
-    spec = Column(String)
-    overview = Column(Text)
-    highlights_json = Column(Text, default="[]")
-    cover_image_url = Column(String)
+    status_publicacao = Column(String)
+    carroceria = Column(String)
+    cambio = Column(String)
+    combustivel = Column(String)
+    cor = Column(String)
+    especificacao = Column(String)
+    descricao = Column(Text)
+    destaques_json = Column(Text, default="[]")
+    url_imagem_capa = Column(String)
     cidade = Column(String)
     final_placa = Column(String)
     blindado = Column(Boolean, default=False)
@@ -82,60 +89,60 @@ class Vehicle(Base):
     ipva_pago = Column(Boolean, default=False)
     licenciado = Column(Boolean, default=False)
     garantia_fabrica = Column(Boolean, default=False)
-    synced_at = Column(DateTime, default=datetime.utcnow)
+    sincronizado_em = Column(DateTime, default=agora_utc)
 
-    images = relationship(
-        "VehicleImage", back_populates="vehicle", order_by="VehicleImage.sort_order", cascade="all, delete-orphan"
+    imagens = relationship(
+        "ImagemVeiculo", back_populates="veiculo", order_by="ImagemVeiculo.ordem", cascade="all, delete-orphan"
     )
 
-    def highlights(self) -> list:
+    def destaques(self) -> list:
         try:
-            return json.loads(self.highlights_json or "[]")
+            return json.loads(self.destaques_json or "[]")
         except json.JSONDecodeError:
             return []
 
     @property
-    def cover_local_path(self) -> str | None:
-        for img in self.images:
-            if img.is_cover and img.local_path:
-                return img.local_path
-        if self.images and self.images[0].local_path:
-            return self.images[0].local_path
+    def caminho_capa(self) -> str | None:
+        for img in self.imagens:
+            if img.eh_capa and img.caminho_local:
+                return img.caminho_local
+        if self.imagens and self.imagens[0].caminho_local:
+            return self.imagens[0].caminho_local
         return None
 
 
-class VehicleImage(Base):
-    __tablename__ = "vehicle_images"
+class ImagemVeiculo(Base):
+    __tablename__ = "imagens_veiculo"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), index=True)
-    image_url = Column(String, nullable=False)
-    local_path = Column(String, nullable=True)  # caminho relativo dentro de media/, se já baixada
-    is_cover = Column(Boolean, default=False)
-    sort_order = Column(Integer, default=0)
+    veiculo_id = Column(Integer, ForeignKey("veiculos.id"), index=True)
+    url_imagem = Column(String, nullable=False)
+    caminho_local = Column(String, nullable=True)  # caminho relativo dentro de media/, se já baixada
+    eh_capa = Column(Boolean, default=False)
+    ordem = Column(Integer, default=0)
 
-    vehicle = relationship("Vehicle", back_populates="images")
+    veiculo = relationship("Veiculo", back_populates="imagens")
 
 
 # ── Conversas ────────────────────────────────────────────────────────────
-# Status possíveis: active | completed | expired | reset
+# Status possíveis: ativa | concluida | expirada | reiniciada
 #
-# A sessão em si continua sendo por phone_number (é assim que o WhatsApp funciona — uma thread
-# por número). lead_id é só uma marcação de qual lead estava em pauta durante essa sessão —
-# importante porque o mesmo telefone pode ter vários leads ao longo do tempo (ver
-# create_lead_after_closure em database.py): sem isso, o histórico de conversa de um lead
+# A sessão em si continua sendo por numero_telefone (é assim que o WhatsApp funciona — uma
+# thread por número). lead_id é só uma marcação de qual lead estava em pauta durante essa sessão
+# — importante porque o mesmo telefone pode ter vários leads ao longo do tempo (ver
+# criar_lead_apos_encerramento em database.py): sem isso, o histórico de conversa de um lead
 # reaberto mostraria tudo daquele telefone desde sempre, misturado com leads antigos já fechados.
 # Fica nullable porque a 1ª mensagem de uma conversa nova pode chegar antes de existir lead ainda.
-class Conversation(Base):
-    __tablename__ = "conversations"
+class Conversa(Base):
+    __tablename__ = "conversas"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    phone_number = Column(String, index=True)
+    numero_telefone = Column(String, index=True)
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
-    status = Column(String, default="active")
-    messages_json = Column(Text, default="[]")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="ativa")
+    mensagens_json = Column(Text, default="[]")
+    criado_em = Column(DateTime, default=agora_utc)
+    atualizado_em = Column(DateTime, default=agora_utc)
 
 
 # ── Leads ────────────────────────────────────────────────────────────────
@@ -143,14 +150,14 @@ class Conversation(Base):
 # Os outros 5 dependem de uma ação humana (vendedor ligou, fechou venda, etc) e ficam editáveis
 # no painel admin.
 #
-# SILENCED_LEAD_STATUSES: bot para de responder esse telefone (main.py checa a cada mensagem).
+# STATUS_LEAD_SILENCIADOS: bot para de responder esse telefone (main.py checa a cada mensagem).
 #   - transferido: a IA desistiu e já avisou "vou chamar um vendedor" — fica em silêncio esperando
 #     um humano assumir, mas é o MESMO atendimento (conversa não é resetada, sem lead novo).
-#   - contatado/convertido/perdido: também fazem parte de CLOSED_LEAD_STATUSES (ver abaixo).
+#   - contatado/convertido/perdido: também fazem parte de STATUS_LEAD_FECHADOS (ver abaixo).
 #
-# CLOSED_LEAD_STATUSES (subconjunto de SILENCED): o assunto está genuinamente encerrado — além de
-#   silenciar, reseta a conversa; se o cliente insistir depois, recebe uma cortesia e um lead novo
-#   é criado pra revisão manual, em vez de reabrir o lead antigo.
+# STATUS_LEAD_FECHADOS (subconjunto de SILENCIADOS): o assunto está genuinamente encerrado — além
+#   de silenciar, reseta a conversa; se o cliente insistir depois, recebe uma cortesia e um lead
+#   novo é criado pra revisão manual, em vez de reabrir o lead antigo.
 LEAD_STATUS_LABELS = {
     "novo": "Novo",
     "qualificado": "Qualificado",
@@ -160,17 +167,17 @@ LEAD_STATUS_LABELS = {
     "convertido": "Convertido",
     "perdido": "Perdido",
 }
-MANUAL_LEAD_STATUSES = ["agendado", "transferido", "contatado", "convertido", "perdido"]
-CLOSED_LEAD_STATUSES = {"contatado", "convertido", "perdido"}
-SILENCED_LEAD_STATUSES = {"transferido"} | CLOSED_LEAD_STATUSES
+STATUS_LEAD_MANUAIS = ["agendado", "transferido", "contatado", "convertido", "perdido"]
+STATUS_LEAD_FECHADOS = {"contatado", "convertido", "perdido"}
+STATUS_LEAD_SILENCIADOS = {"transferido"} | STATUS_LEAD_FECHADOS
 
 # Prioridade: normal | quente
 class Lead(Base):
     __tablename__ = "leads"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
-    phone_number = Column(String, index=True)
+    loja_id = Column(Integer, ForeignKey("lojas.id"), index=True)
+    numero_telefone = Column(String, index=True)
     nome = Column(String)
     email = Column(String)
     telefone = Column(String)
@@ -199,26 +206,26 @@ class Lead(Base):
     observacoes = Column(Text)
     status = Column(String, default="novo")
     origem = Column(String, default="whatsapp")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    criado_em = Column(DateTime, default=agora_utc)
+    atualizado_em = Column(DateTime, default=agora_utc)
 
 
 # ── Usuários ─────────────────────────────────────────────────────────────
-# Cada pessoa tem login próprio (password_hash) — ainda sem diferenciação de permissão entre
+# Cada pessoa tem login próprio (senha_hash) — ainda sem diferenciação de permissão entre
 # admin/vendedor (ver MELHORIAS), só identidade distinta pra atribuir corretamente no
-# lead_historico. password_hash fica nullable porque o usuário especial "IA" (mudanças
+# lead_historico. senha_hash fica nullable porque o usuário especial "IA" (mudanças
 # automáticas do bot) nunca loga, só existe pra ser referenciado como autor.
 IA_USERNAME = "IA"
 
 
-class User(Base):
-    __tablename__ = "users"
+class Usuario(Base):
+    __tablename__ = "usuarios"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String, unique=True, nullable=False, index=True)
+    nome_usuario = Column(String, unique=True, nullable=False, index=True)
     nome = Column(String)
-    password_hash = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    senha_hash = Column(String, nullable=True)
+    criado_em = Column(DateTime, default=agora_utc)
 
 
 # ── Histórico de status do lead ─────────────────────────────────────────
@@ -227,339 +234,339 @@ class LeadHistorico(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     lead_id = Column(Integer, ForeignKey("leads.id"), index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     status_anterior = Column(String)
     status_novo = Column(String)
     observacao = Column(Text, nullable=True)
-    data = Column(DateTime, default=datetime.utcnow)
+    data = Column(DateTime, default=agora_utc)
 
-    user = relationship("User")
+    usuario = relationship("Usuario")
 
 
 # ── Conteúdo do site público (novidades, vídeos do Instagram, avaliações Google) ──
-class NewsPost(Base):
-    __tablename__ = "news_posts"
-    __table_args__ = (UniqueConstraint("dealership_id", "slug", name="uq_newspost_dealership_slug"),)
+class Novidade(Base):
+    __tablename__ = "novidades"
+    __table_args__ = (UniqueConstraint("loja_id", "slug", name="uq_novidade_loja_slug"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
+    loja_id = Column(Integer, ForeignKey("lojas.id"), index=True)
     titulo = Column(String, nullable=False)
     slug = Column(String, index=True)
     resumo = Column(String)
     conteudo = Column(Text)
-    imagem_url = Column(String)
-    imagem_local_path = Column(String)
+    url_imagem = Column(String)
+    caminho_local_imagem = Column(String)
     publicado = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    criado_em = Column(DateTime, default=agora_utc)
 
 
 # Fase 2 (bloqueada até o usuário gerar o token do Instagram, ver plano) — tabela já existe
 # desde já pra não precisar de migração depois, só fica vazia até o sync rodar.
-class InstagramPost(Base):
-    __tablename__ = "instagram_posts"
-    __table_args__ = (UniqueConstraint("dealership_id", "media_id", name="uq_igpost_dealership_media"),)
+class PostInstagram(Base):
+    __tablename__ = "posts_instagram"
+    __table_args__ = (UniqueConstraint("loja_id", "id_midia", name="uq_postinstagram_loja_midia"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
-    media_id = Column(String, index=True)
-    caption = Column(Text)
-    media_type = Column(String)
-    media_url = Column(String)
-    thumbnail_url = Column(String)
-    permalink = Column(String)
-    timestamp = Column(DateTime, nullable=True)
+    loja_id = Column(Integer, ForeignKey("lojas.id"), index=True)
+    id_midia = Column(String, index=True)
+    legenda = Column(Text)
+    tipo_midia = Column(String)
+    url_midia = Column(String)
+    url_miniatura = Column(String)
+    link_permanente = Column(String)
+    data_hora = Column(DateTime, nullable=True)
     visivel = Column(Boolean, default=False)
-    synced_at = Column(DateTime, default=datetime.utcnow)
+    sincronizado_em = Column(DateTime, default=agora_utc)
 
 
 # Fase 3 (bloqueada até o usuário gerar a chave do Google Places, ver plano).
-class GoogleReview(Base):
-    __tablename__ = "google_reviews"
+class AvaliacaoGoogle(Base):
+    __tablename__ = "avaliacoes_google"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dealership_id = Column(Integer, ForeignKey("dealerships.id"), index=True)
-    author_name = Column(String)
-    profile_photo_url = Column(String)
-    rating = Column(Integer)
-    text = Column(Text)
-    relative_time_description = Column(String)
-    synced_at = Column(DateTime, default=datetime.utcnow)
+    loja_id = Column(Integer, ForeignKey("lojas.id"), index=True)
+    nome_autor = Column(String)
+    url_foto_perfil = Column(String)
+    nota = Column(Integer)
+    texto = Column(Text)
+    tempo_relativo = Column(String)
+    sincronizado_em = Column(DateTime, default=agora_utc)
 
 
 Base.metadata.create_all(bind=engine)
 
 
-# ── Dealership ───────────────────────────────────────────────────────────
-def get_or_create_dealership(db, nome: str, connector_type: str, connector_config: dict, staff_phone: str = "") -> Dealership:
-    dealership = db.query(Dealership).filter(Dealership.nome == nome).first()
-    if dealership:
-        dealership.connector_type = connector_type
-        dealership.connector_config_json = json.dumps(connector_config, ensure_ascii=False)
-        if staff_phone:
-            dealership.staff_phone = staff_phone
+# ── Loja ─────────────────────────────────────────────────────────────────
+def obter_ou_criar_loja(db, nome: str, tipo_conector: str, config_conector: dict, telefone_equipe: str = "") -> Loja:
+    loja = db.query(Loja).filter(Loja.nome == nome).first()
+    if loja:
+        loja.tipo_conector = tipo_conector
+        loja.config_conector_json = json.dumps(config_conector, ensure_ascii=False)
+        if telefone_equipe:
+            loja.telefone_equipe = telefone_equipe
         db.commit()
-        db.refresh(dealership)
-        return dealership
+        db.refresh(loja)
+        return loja
 
-    dealership = Dealership(
+    loja = Loja(
         nome=nome,
-        connector_type=connector_type,
-        connector_config_json=json.dumps(connector_config, ensure_ascii=False),
-        staff_phone=staff_phone,
+        tipo_conector=tipo_conector,
+        config_conector_json=json.dumps(config_conector, ensure_ascii=False),
+        telefone_equipe=telefone_equipe,
     )
-    db.add(dealership)
+    db.add(loja)
     db.commit()
-    db.refresh(dealership)
-    return dealership
+    db.refresh(loja)
+    return loja
 
 
-def get_default_dealership(db) -> Dealership | None:
+def obter_loja_padrao(db) -> Loja | None:
     """"Ativa" = a loja mais recente cadastrada. DESC (não ASC) de propósito: ao trocar de
-    loja criamos uma linha nova preservando o histórico da antiga (get_or_create_dealership
+    loja criamos uma linha nova preservando o histórico da antiga (obter_ou_criar_loja
     busca por nome, então nome diferente = linha nova) — se isso continuasse ordenando por
     id ASC, a loja antiga permaneceria "a" loja resolvida aqui pra sempre."""
-    return db.query(Dealership).order_by(Dealership.id.desc()).first()
+    return db.query(Loja).order_by(Loja.id.desc()).first()
 
 
 # ── Usuários ─────────────────────────────────────────────────────────────
 _PBKDF2_ITERATIONS = 260_000
 
 
-def hash_password(password: str) -> str:
+def gerar_hash_senha(senha: str) -> str:
     """PBKDF2-HMAC-SHA256 com salt aleatório — só stdlib, sem dependência nova pro piloto.
     Formato salvo: "salt_hex$hash_hex"."""
     salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), _PBKDF2_ITERATIONS)
+    digest = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), bytes.fromhex(salt), _PBKDF2_ITERATIONS)
     return f"{salt}${digest.hex()}"
 
 
-def verify_password(password: str, password_hash: str) -> bool:
+def verificar_senha(senha: str, senha_hash: str) -> bool:
     try:
-        salt, expected_hex = password_hash.split("$", 1)
+        salt, expected_hex = senha_hash.split("$", 1)
     except (ValueError, AttributeError):
         return False
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), _PBKDF2_ITERATIONS)
+    digest = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), bytes.fromhex(salt), _PBKDF2_ITERATIONS)
     return hmac.compare_digest(digest.hex(), expected_hex)
 
 
-def get_or_create_user(db, username: str, nome: str | None = None) -> User:
-    user = db.query(User).filter(User.username == username).first()
-    if user:
-        return user
-    user = User(username=username, nome=nome or username)
-    db.add(user)
+def obter_ou_criar_usuario(db, nome_usuario: str, nome: str | None = None) -> Usuario:
+    usuario = db.query(Usuario).filter(Usuario.nome_usuario == nome_usuario).first()
+    if usuario:
+        return usuario
+    usuario = Usuario(nome_usuario=nome_usuario, nome=nome or nome_usuario)
+    db.add(usuario)
     db.commit()
-    db.refresh(user)
-    return user
+    db.refresh(usuario)
+    return usuario
 
 
-def get_ia_user(db) -> User:
-    return get_or_create_user(db, IA_USERNAME, "Inteligência Artificial")
+def obter_usuario_ia(db) -> Usuario:
+    return obter_ou_criar_usuario(db, IA_USERNAME, "Inteligência Artificial")
 
 
-def create_user_with_password(db, username: str, password: str, nome: str | None = None) -> User:
+def criar_usuario_com_senha(db, nome_usuario: str, senha: str, nome: str | None = None) -> Usuario:
     """Cria um login novo (ou atualiza a senha de um usuário já existente, ex: o "admin"
     criado via sessão antes de ter senha própria)."""
-    user = db.query(User).filter(User.username == username).first()
-    if user:
-        user.password_hash = hash_password(password)
+    usuario = db.query(Usuario).filter(Usuario.nome_usuario == nome_usuario).first()
+    if usuario:
+        usuario.senha_hash = gerar_hash_senha(senha)
         if nome:
-            user.nome = nome
+            usuario.nome = nome
     else:
-        user = User(username=username, nome=nome or username, password_hash=hash_password(password))
-        db.add(user)
+        usuario = Usuario(nome_usuario=nome_usuario, nome=nome or nome_usuario, senha_hash=gerar_hash_senha(senha))
+        db.add(usuario)
     db.commit()
-    db.refresh(user)
-    return user
+    db.refresh(usuario)
+    return usuario
 
 
-def verify_user_credentials(db, username: str, password: str) -> bool:
-    user = db.query(User).filter(User.username == username).first()
-    if not user or not user.password_hash:
+def verificar_credenciais_usuario(db, nome_usuario: str, senha: str) -> bool:
+    usuario = db.query(Usuario).filter(Usuario.nome_usuario == nome_usuario).first()
+    if not usuario or not usuario.senha_hash:
         return False
-    return verify_password(password, user.password_hash)
+    return verificar_senha(senha, usuario.senha_hash)
 
 
 # ── Estoque ──────────────────────────────────────────────────────────────
-VEHICLE_FIELDS = {
-    "external_id", "slug", "code", "brand", "model", "version", "year", "price", "mileage",
-    "status", "publication_status", "body", "transmission", "fuel", "color", "spec",
-    "overview", "cover_image_url", "cidade", "final_placa", "blindado", "aceita_troca",
+CAMPOS_VEICULO = {
+    "id_externo", "slug", "codigo", "marca", "modelo", "versao", "ano", "preco", "quilometragem",
+    "status", "status_publicacao", "carroceria", "cambio", "combustivel", "cor", "especificacao",
+    "descricao", "url_imagem_capa", "cidade", "final_placa", "blindado", "aceita_troca",
     "unico_dono", "revisoes_concessionaria", "ipva_pago", "licenciado", "garantia_fabrica",
 }
 
 
-def upsert_vehicle(db, dealership_id: int, data: dict) -> Vehicle:
-    vehicle = (
-        db.query(Vehicle)
-        .filter(Vehicle.dealership_id == dealership_id, Vehicle.slug == data["slug"])
+def salvar_veiculo(db, loja_id: int, data: dict) -> Veiculo:
+    veiculo = (
+        db.query(Veiculo)
+        .filter(Veiculo.loja_id == loja_id, Veiculo.slug == data["slug"])
         .first()
     )
-    highlights_json = json.dumps(data.get("highlights", []), ensure_ascii=False)
+    destaques_json = json.dumps(data.get("destaques", []), ensure_ascii=False)
 
-    if not vehicle:
-        vehicle = Vehicle(dealership_id=dealership_id)
-        db.add(vehicle)
+    if not veiculo:
+        veiculo = Veiculo(loja_id=loja_id)
+        db.add(veiculo)
 
-    for field in VEHICLE_FIELDS:
-        if field in data:
-            setattr(vehicle, field, data[field])
-    vehicle.highlights_json = highlights_json
-    vehicle.synced_at = datetime.utcnow()
+    for campo in CAMPOS_VEICULO:
+        if campo in data:
+            setattr(veiculo, campo, data[campo])
+    veiculo.destaques_json = destaques_json
+    veiculo.sincronizado_em = agora_utc()
 
     db.commit()
-    db.refresh(vehicle)
-    return vehicle
+    db.refresh(veiculo)
+    return veiculo
 
 
-def replace_vehicle_images(db, vehicle_id: int, images: list) -> None:
-    db.query(VehicleImage).filter(VehicleImage.vehicle_id == vehicle_id).delete()
-    for img in images:
+def substituir_imagens_veiculo(db, veiculo_id: int, imagens: list) -> None:
+    db.query(ImagemVeiculo).filter(ImagemVeiculo.veiculo_id == veiculo_id).delete()
+    for img in imagens:
         db.add(
-            VehicleImage(
-                vehicle_id=vehicle_id,
-                image_url=img["image_url"],
-                local_path=img.get("local_path"),
-                is_cover=img.get("is_cover", False),
-                sort_order=img.get("sort_order", 0),
+            ImagemVeiculo(
+                veiculo_id=veiculo_id,
+                url_imagem=img["url_imagem"],
+                caminho_local=img.get("caminho_local"),
+                eh_capa=img.get("eh_capa", False),
+                ordem=img.get("ordem", 0),
             )
         )
     db.commit()
 
 
-def get_available_vehicles(db, dealership_id: int) -> list[Vehicle]:
+def obter_veiculos_disponiveis(db, loja_id: int) -> list[Veiculo]:
     return (
-        db.query(Vehicle)
-        .filter(Vehicle.dealership_id == dealership_id)
-        .order_by(Vehicle.brand.asc(), Vehicle.model.asc())
+        db.query(Veiculo)
+        .filter(Veiculo.loja_id == loja_id)
+        .order_by(Veiculo.marca.asc(), Veiculo.modelo.asc())
         .all()
     )
 
 
-def get_vehicle_by_slug(db, dealership_id: int, slug: str) -> Vehicle | None:
+def obter_veiculo_por_slug(db, loja_id: int, slug: str) -> Veiculo | None:
     return (
-        db.query(Vehicle)
-        .filter(Vehicle.dealership_id == dealership_id, Vehicle.slug == slug)
+        db.query(Veiculo)
+        .filter(Veiculo.loja_id == loja_id, Veiculo.slug == slug)
         .first()
     )
 
 
-def get_public_vehicles(db, dealership_id: int) -> list[Vehicle]:
+def obter_veiculos_publicos(db, loja_id: int) -> list[Veiculo]:
     """Só veículos disponíveis e publicados — usado pelo catálogo público e (via
     inventory.py) pelo bot, nunca pela listagem do admin (que precisa ver rascunho/vendido)."""
     return (
-        db.query(Vehicle)
+        db.query(Veiculo)
         .filter(
-            Vehicle.dealership_id == dealership_id,
-            Vehicle.status == "Disponivel",
-            Vehicle.publication_status == "Publicado",
+            Veiculo.loja_id == loja_id,
+            Veiculo.status == "Disponivel",
+            Veiculo.status_publicacao == "Publicado",
         )
-        .order_by(Vehicle.brand.asc(), Vehicle.model.asc())
+        .order_by(Veiculo.marca.asc(), Veiculo.modelo.asc())
         .all()
     )
 
 
-def get_public_vehicles_filtered(
+def obter_veiculos_publicos_filtrados(
     db,
-    dealership_id: int,
+    loja_id: int,
     marca: str | None = None,
     preco_min: float | None = None,
     preco_max: float | None = None,
     carroceria: str | None = None,
     cambio: str | None = None,
     combustivel: str | None = None,
-) -> list[Vehicle]:
-    """Mesma base de get_public_vehicles (só disponível+publicado), com filtros pra tela de
+) -> list[Veiculo]:
+    """Mesma base de obter_veiculos_publicos (só disponível+publicado), com filtros pra tela de
     estoque do catálogo público — mesmo espírito de inventory.py::buscar_veiculos, mas
     parametrizado por query string em vez de chamado pela IA."""
-    q = db.query(Vehicle).filter(
-        Vehicle.dealership_id == dealership_id,
-        Vehicle.status == "Disponivel",
-        Vehicle.publication_status == "Publicado",
+    q = db.query(Veiculo).filter(
+        Veiculo.loja_id == loja_id,
+        Veiculo.status == "Disponivel",
+        Veiculo.status_publicacao == "Publicado",
     )
     if marca:
-        q = q.filter(Vehicle.brand == marca)
+        q = q.filter(Veiculo.marca == marca)
     if preco_min is not None:
-        q = q.filter(Vehicle.price >= preco_min)
+        q = q.filter(Veiculo.preco >= preco_min)
     if preco_max is not None:
-        q = q.filter(Vehicle.price <= preco_max)
+        q = q.filter(Veiculo.preco <= preco_max)
     if carroceria:
-        q = q.filter(Vehicle.body == carroceria)
+        q = q.filter(Veiculo.carroceria == carroceria)
     if cambio:
-        q = q.filter(Vehicle.transmission == cambio)
+        q = q.filter(Veiculo.cambio == cambio)
     if combustivel:
-        q = q.filter(Vehicle.fuel == combustivel)
-    return q.order_by(Vehicle.price.asc()).all()
+        q = q.filter(Veiculo.combustivel == combustivel)
+    return q.order_by(Veiculo.preco.asc()).all()
 
 
-def get_public_filter_options(db, dealership_id: int) -> dict:
+def obter_opcoes_filtro_publico(db, loja_id: int) -> dict:
     """Valores distintos hoje no estoque disponível+publicado, pra popular os dropdowns do
     filtro sem nunca oferecer uma opção que não bate com nenhum veículo real."""
-    base = db.query(Vehicle).filter(
-        Vehicle.dealership_id == dealership_id,
-        Vehicle.status == "Disponivel",
-        Vehicle.publication_status == "Publicado",
+    base = db.query(Veiculo).filter(
+        Veiculo.loja_id == loja_id,
+        Veiculo.status == "Disponivel",
+        Veiculo.status_publicacao == "Publicado",
     )
     return {
-        "marcas": sorted({v[0] for v in base.with_entities(Vehicle.brand).distinct() if v[0]}),
-        "carrocerias": sorted({v[0] for v in base.with_entities(Vehicle.body).distinct() if v[0]}),
-        "cambios": sorted({v[0] for v in base.with_entities(Vehicle.transmission).distinct() if v[0]}),
-        "combustiveis": sorted({v[0] for v in base.with_entities(Vehicle.fuel).distinct() if v[0]}),
+        "marcas": sorted({v[0] for v in base.with_entities(Veiculo.marca).distinct() if v[0]}),
+        "carrocerias": sorted({v[0] for v in base.with_entities(Veiculo.carroceria).distinct() if v[0]}),
+        "cambios": sorted({v[0] for v in base.with_entities(Veiculo.cambio).distinct() if v[0]}),
+        "combustiveis": sorted({v[0] for v in base.with_entities(Veiculo.combustivel).distinct() if v[0]}),
     }
 
 
-def get_public_vehicle_by_slug(db, dealership_id: int, slug: str) -> Vehicle | None:
-    """Igual get_vehicle_by_slug, mas só retorna se disponível+publicado — um veículo
+def obter_veiculo_publico_por_slug(db, loja_id: int, slug: str) -> Veiculo | None:
+    """Igual obter_veiculo_por_slug, mas só retorna se disponível+publicado — um veículo
     rascunho/vendido some tanto pra IA quanto pro catálogo público, com a mesma resposta de
     "não encontrado" que um slug inexistente (não vaza que o veículo existe mas está oculto)."""
     return (
-        db.query(Vehicle)
+        db.query(Veiculo)
         .filter(
-            Vehicle.dealership_id == dealership_id,
-            Vehicle.slug == slug,
-            Vehicle.status == "Disponivel",
-            Vehicle.publication_status == "Publicado",
+            Veiculo.loja_id == loja_id,
+            Veiculo.slug == slug,
+            Veiculo.status == "Disponivel",
+            Veiculo.status_publicacao == "Publicado",
         )
         .first()
     )
 
 
 # ── Conversas ────────────────────────────────────────────────────────────
-def _get_active(db, phone_number: str):
+def _obter_ativa(db, numero_telefone: str):
     return (
-        db.query(Conversation)
-        .filter(Conversation.phone_number == phone_number, Conversation.status == "active")
-        .order_by(Conversation.created_at.desc())
+        db.query(Conversa)
+        .filter(Conversa.numero_telefone == numero_telefone, Conversa.status == "ativa")
+        .order_by(Conversa.criado_em.desc())
         .first()
     )
 
 
-def _new_session(db, phone_number: str, lead_id: int | None = None) -> "Conversation":
-    conv = Conversation(phone_number=phone_number, status="active", lead_id=lead_id)
+def _nova_sessao(db, numero_telefone: str, lead_id: int | None = None) -> "Conversa":
+    conv = Conversa(numero_telefone=numero_telefone, status="ativa", lead_id=lead_id)
     db.add(conv)
     db.commit()
     db.refresh(conv)
     return conv
 
 
-def get_conversation(db, phone_number: str) -> list:
-    conv = _get_active(db, phone_number)
+def obter_conversa(db, numero_telefone: str) -> list:
+    conv = _obter_ativa(db, numero_telefone)
     if not conv:
         return []
-    return json.loads(conv.messages_json)
+    return json.loads(conv.mensagens_json)
 
 
-def get_conversation_updated_at(db, phone_number: str):
-    conv = _get_active(db, phone_number)
-    return conv.updated_at if conv else None
+def obter_conversa_atualizada_em(db, numero_telefone: str):
+    conv = _obter_ativa(db, numero_telefone)
+    return conv.atualizado_em if conv else None
 
 
-def save_conversation(db, phone_number: str, messages: list, lead_id: int | None = None) -> None:
-    conv = _get_active(db, phone_number)
+def salvar_conversa(db, numero_telefone: str, mensagens: list, lead_id: int | None = None) -> None:
+    conv = _obter_ativa(db, numero_telefone)
     if not conv:
-        conv = _new_session(db, phone_number, lead_id)
-    conv.messages_json = json.dumps(messages, ensure_ascii=False)
-    conv.updated_at = datetime.utcnow()
+        conv = _nova_sessao(db, numero_telefone, lead_id)
+    conv.mensagens_json = json.dumps(mensagens, ensure_ascii=False)
+    conv.atualizado_em = agora_utc()
     if lead_id is not None and conv.lead_id is None:
         # marca com o lead assim que ele existir — a 1ª mensagem de uma conversa pode chegar
         # antes da IA ter chamado criar_ou_atualizar_lead pela primeira vez.
@@ -567,24 +574,24 @@ def save_conversation(db, phone_number: str, messages: list, lead_id: int | None
     db.commit()
 
 
-def close_conversation(db, phone_number: str, reason: str = "completed") -> None:
-    """Fecha a sessão ativa e abre uma nova vazia (sem lead_id — a próxima save_conversation
+def encerrar_conversa(db, numero_telefone: str, motivo: str = "concluida") -> None:
+    """Fecha a sessão ativa e abre uma nova vazia (sem lead_id — a próxima salvar_conversa
     marca com o lead que estiver em pauta nesse momento, que pode ser um lead novo)."""
-    conv = _get_active(db, phone_number)
+    conv = _obter_ativa(db, numero_telefone)
     if conv:
-        conv.status = reason
-        conv.updated_at = datetime.utcnow()
+        conv.status = motivo
+        conv.atualizado_em = agora_utc()
         db.commit()
-    _new_session(db, phone_number)
+    _nova_sessao(db, numero_telefone)
 
 
-def get_conversation_history_for_lead(db, lead_id: int) -> list["Conversation"]:
+def obter_historico_conversa_do_lead(db, lead_id: int) -> list["Conversa"]:
     """Histórico de conversa escopado a UM lead específico — usado no painel, pra não misturar
     sessões de leads antigos já fechados quando o mesmo telefone gera um lead novo."""
     return (
-        db.query(Conversation)
-        .filter(Conversation.lead_id == lead_id)
-        .order_by(Conversation.created_at.desc())
+        db.query(Conversa)
+        .filter(Conversa.lead_id == lead_id)
+        .order_by(Conversa.criado_em.desc())
         .all()
     )
 
@@ -593,7 +600,7 @@ def get_conversation_history_for_lead(db, lead_id: int) -> list["Conversation"]:
 _URGENCIA_ALTA_KEYWORDS = ("essa semana", "hoje", "urgente", "o quanto antes", "amanhã", "agora")
 
 
-def _compute_priority(lead: Lead) -> str:
+def _calcular_prioridade(lead: Lead) -> str:
     urgencia = (lead.urgencia_compra or "").lower()
     is_urgente = any(k in urgencia for k in _URGENCIA_ALTA_KEYWORDS)
     tem_orcamento_ou_pagamento = bool(lead.orcamento_aproximado or lead.forma_pagamento)
@@ -603,32 +610,32 @@ def _compute_priority(lead: Lead) -> str:
     return lead.prioridade or "normal"
 
 
-def get_or_create_lead(db, dealership_id: int, phone_number: str) -> tuple[Lead, bool]:
+def obter_ou_criar_lead(db, loja_id: int, numero_telefone: str) -> tuple[Lead, bool]:
     """Retorna (lead, is_new) — is_new indica se o registro acabou de ser criado."""
     lead = (
         db.query(Lead)
-        .filter(Lead.dealership_id == dealership_id, Lead.phone_number == phone_number)
-        .order_by(Lead.created_at.desc())
+        .filter(Lead.loja_id == loja_id, Lead.numero_telefone == numero_telefone)
+        .order_by(Lead.criado_em.desc())
         .first()
     )
     if lead:
         return lead, False
-    lead = Lead(dealership_id=dealership_id, phone_number=phone_number)
+    lead = Lead(loja_id=loja_id, numero_telefone=numero_telefone)
     db.add(lead)
     db.commit()
     db.refresh(lead)
     return lead, True
 
 
-LEAD_UPDATABLE_FIELDS = {
+CAMPOS_ATUALIZAVEIS_LEAD = {
     "nome", "email", "telefone", "veiculo_interesse", "veiculo_slug", "forma_pagamento", "tem_troca",
     "veiculo_troca_desc", "orcamento_aproximado", "urgencia_compra", "uso_pretendido",
     "como_conheceu", "preferencia_contato", "resumo_executivo", "observacoes", "status",
 }
 
 
-def log_status_change(
-    db, lead_id: int, user_id: int | None, status_anterior: str | None, status_novo: str, observacao: str | None = None
+def registrar_mudanca_status(
+    db, lead_id: int, usuario_id: int | None, status_anterior: str | None, status_novo: str, observacao: str | None = None
 ) -> None:
     """Registra uma linha no histórico só quando o status de fato muda de valor —
     chamadas que atualizam outros campos do lead sem tocar o status não geram entrada."""
@@ -637,7 +644,7 @@ def log_status_change(
     db.add(
         LeadHistorico(
             lead_id=lead_id,
-            user_id=user_id,
+            usuario_id=usuario_id,
             status_anterior=status_anterior,
             status_novo=status_novo,
             observacao=observacao,
@@ -646,7 +653,7 @@ def log_status_change(
     db.commit()
 
 
-def get_lead_historico(db, lead_id: int) -> list[LeadHistorico]:
+def obter_historico_lead(db, lead_id: int) -> list[LeadHistorico]:
     return (
         db.query(LeadHistorico)
         .filter(LeadHistorico.lead_id == lead_id)
@@ -655,72 +662,72 @@ def get_lead_historico(db, lead_id: int) -> list[LeadHistorico]:
     )
 
 
-def update_lead(db, lead: Lead, fields: dict) -> Lead:
+def atualizar_lead(db, lead: Lead, campos: dict) -> Lead:
     """Atualização feita pela IA via tool `criar_ou_atualizar_lead`. Se o status mudar de
     valor nessa chamada, registra no histórico com o usuário especial "IA"."""
     status_anterior = lead.status
-    for key, value in fields.items():
-        if key in LEAD_UPDATABLE_FIELDS and value is not None:
-            setattr(lead, key, value)
-    lead.prioridade = _compute_priority(lead)
-    lead.updated_at = datetime.utcnow()
+    for chave, valor in campos.items():
+        if chave in CAMPOS_ATUALIZAVEIS_LEAD and valor is not None:
+            setattr(lead, chave, valor)
+    lead.prioridade = _calcular_prioridade(lead)
+    lead.atualizado_em = agora_utc()
     db.commit()
     db.refresh(lead)
     if lead.status != status_anterior:
-        ia_user = get_ia_user(db)
-        log_status_change(db, lead.id, ia_user.id, status_anterior, lead.status)
+        usuario_ia = obter_usuario_ia(db)
+        registrar_mudanca_status(db, lead.id, usuario_ia.id, status_anterior, lead.status)
     return lead
 
 
-def get_all_leads(db, dealership_id: int | None = None) -> list[Lead]:
+def obter_todos_leads(db, loja_id: int | None = None) -> list[Lead]:
     q = db.query(Lead)
-    if dealership_id is not None:
-        q = q.filter(Lead.dealership_id == dealership_id)
-    return q.order_by(Lead.updated_at.desc()).all()
+    if loja_id is not None:
+        q = q.filter(Lead.loja_id == loja_id)
+    return q.order_by(Lead.atualizado_em.desc()).all()
 
 
-def get_lead_by_id(db, lead_id: int) -> Lead | None:
+def obter_lead_por_id(db, lead_id: int) -> Lead | None:
     return db.query(Lead).filter(Lead.id == lead_id).first()
 
 
-def get_latest_lead(db, dealership_id: int, phone_number: str) -> Lead | None:
+def obter_lead_mais_recente(db, loja_id: int, numero_telefone: str) -> Lead | None:
     return (
         db.query(Lead)
-        .filter(Lead.dealership_id == dealership_id, Lead.phone_number == phone_number)
-        .order_by(Lead.created_at.desc())
+        .filter(Lead.loja_id == loja_id, Lead.numero_telefone == numero_telefone)
+        .order_by(Lead.criado_em.desc())
         .first()
     )
 
 
-def get_latest_lead_status(db, dealership_id: int, phone_number: str) -> str | None:
-    lead = get_latest_lead(db, dealership_id, phone_number)
+def obter_status_lead_mais_recente(db, loja_id: int, numero_telefone: str) -> str | None:
+    lead = obter_lead_mais_recente(db, loja_id, numero_telefone)
     return lead.status if lead else None
 
 
-def set_lead_status(db, lead: Lead, status: str, user_id: int | None = None, observacao: str | None = None) -> Lead:
+def definir_status_lead(db, lead: Lead, status: str, usuario_id: int | None = None, observacao: str | None = None) -> Lead:
     """Atualiza o status do lead manualmente (painel admin). Se for um status "fechado" (ver
-    CLOSED_LEAD_STATUSES), também encerra a sessão de conversa ativa — main.py usa
-    SILENCED_LEAD_STATUSES (mais amplo, inclui transferido) pra decidir se o bot responde ou não
-    a próxima mensagem. Registra a mudança em lead_historico com quem fez (user_id) e por quê."""
+    STATUS_LEAD_FECHADOS), também encerra a sessão de conversa ativa — main.py usa
+    STATUS_LEAD_SILENCIADOS (mais amplo, inclui transferido) pra decidir se o bot responde ou não
+    a próxima mensagem. Registra a mudança em lead_historico com quem fez (usuario_id) e por quê."""
     status_anterior = lead.status
     lead.status = status
-    lead.updated_at = datetime.utcnow()
+    lead.atualizado_em = agora_utc()
     db.commit()
     db.refresh(lead)
-    if status in CLOSED_LEAD_STATUSES:
-        close_conversation(db, lead.phone_number, status)
-    log_status_change(db, lead.id, user_id, status_anterior, status, observacao)
+    if status in STATUS_LEAD_FECHADOS:
+        encerrar_conversa(db, lead.numero_telefone, status)
+    registrar_mudanca_status(db, lead.id, usuario_id, status_anterior, status, observacao)
     return lead
 
 
-def create_lead_after_closure(db, dealership_id: int, phone_number: str, previous_status: str) -> Lead:
+def criar_lead_apos_encerramento(db, loja_id: int, numero_telefone: str, status_anterior: str) -> Lead:
     """Cria um lead novo (status "novo") quando um cliente cujo lead anterior estava fechado (ver
-    CLOSED_LEAD_STATUSES) volta a mandar mensagem — pra alguém da loja revisar manualmente por que
+    STATUS_LEAD_FECHADOS) volta a mandar mensagem — pra alguém da loja revisar manualmente por que
     ele voltou, em vez de reabrir o lead antigo já fechado."""
     lead = Lead(
-        dealership_id=dealership_id,
-        phone_number=phone_number,
-        observacoes=f'Cliente retomou contato — lead anterior estava marcado como "{previous_status}". Revisar manualmente.',
+        loja_id=loja_id,
+        numero_telefone=numero_telefone,
+        observacoes=f'Cliente retomou contato — lead anterior estava marcado como "{status_anterior}". Revisar manualmente.',
     )
     db.add(lead)
     db.commit()
@@ -728,10 +735,10 @@ def create_lead_after_closure(db, dealership_id: int, phone_number: str, previou
     return lead
 
 
-def lead_to_dict(lead: Lead) -> dict:
+def lead_para_dict(lead: Lead) -> dict:
     return {
         "id": lead.id,
-        "phone_number": lead.phone_number,
+        "numero_telefone": lead.numero_telefone,
         "nome": lead.nome,
         "email": lead.email,
         "telefone": lead.telefone,
@@ -749,101 +756,101 @@ def lead_to_dict(lead: Lead) -> dict:
         "prioridade": lead.prioridade,
         "observacoes": lead.observacoes,
         "status": lead.status,
-        "created_at": lead.created_at.isoformat() if lead.created_at else None,
-        "updated_at": lead.updated_at.isoformat() if lead.updated_at else None,
+        "criado_em": lead.criado_em.isoformat() if lead.criado_em else None,
+        "atualizado_em": lead.atualizado_em.isoformat() if lead.atualizado_em else None,
     }
 
 
 # ── Novidades (posts próprios da loja) ──────────────────────────────────────
-def get_public_news_posts(db, dealership_id: int) -> list:
+def obter_novidades_publicas(db, loja_id: int) -> list:
     return (
-        db.query(NewsPost)
-        .filter(NewsPost.dealership_id == dealership_id, NewsPost.publicado.is_(True))
-        .order_by(NewsPost.created_at.desc())
+        db.query(Novidade)
+        .filter(Novidade.loja_id == loja_id, Novidade.publicado.is_(True))
+        .order_by(Novidade.criado_em.desc())
         .all()
     )
 
 
-def get_all_news_posts(db, dealership_id: int) -> list:
+def obter_todas_novidades(db, loja_id: int) -> list:
     """Sem filtro de publicado — pro admin gerenciar rascunhos também."""
     return (
-        db.query(NewsPost)
-        .filter(NewsPost.dealership_id == dealership_id)
-        .order_by(NewsPost.created_at.desc())
+        db.query(Novidade)
+        .filter(Novidade.loja_id == loja_id)
+        .order_by(Novidade.criado_em.desc())
         .all()
     )
 
 
-def get_news_post_by_slug(db, dealership_id: int, slug: str, only_published: bool = True) -> NewsPost | None:
-    q = db.query(NewsPost).filter(NewsPost.dealership_id == dealership_id, NewsPost.slug == slug)
-    if only_published:
-        q = q.filter(NewsPost.publicado.is_(True))
+def obter_novidade_por_slug(db, loja_id: int, slug: str, apenas_publicada: bool = True) -> Novidade | None:
+    q = db.query(Novidade).filter(Novidade.loja_id == loja_id, Novidade.slug == slug)
+    if apenas_publicada:
+        q = q.filter(Novidade.publicado.is_(True))
     return q.first()
 
 
-def upsert_news_post(db, dealership_id: int, data: dict, slug: str | None = None) -> NewsPost:
+def salvar_novidade(db, loja_id: int, data: dict, slug: str | None = None) -> Novidade:
     post = None
     if slug:
-        post = get_news_post_by_slug(db, dealership_id, slug, only_published=False)
+        post = obter_novidade_por_slug(db, loja_id, slug, apenas_publicada=False)
     if not post:
-        post = NewsPost(dealership_id=dealership_id)
+        post = Novidade(loja_id=loja_id)
         db.add(post)
-    for field in ("titulo", "slug", "resumo", "conteudo", "imagem_url", "imagem_local_path", "publicado"):
-        if field in data:
-            setattr(post, field, data[field])
+    for campo in ("titulo", "slug", "resumo", "conteudo", "url_imagem", "caminho_local_imagem", "publicado"):
+        if campo in data:
+            setattr(post, campo, data[campo])
     db.commit()
     db.refresh(post)
     return post
 
 
-def delete_news_post(db, dealership_id: int, slug: str) -> None:
-    post = get_news_post_by_slug(db, dealership_id, slug, only_published=False)
+def excluir_novidade(db, loja_id: int, slug: str) -> None:
+    post = obter_novidade_por_slug(db, loja_id, slug, apenas_publicada=False)
     if post:
         db.delete(post)
         db.commit()
 
 
 # ── Vídeos do Instagram (Fase 2 — ver plano) ────────────────────────────────
-def get_visible_instagram_posts(db, dealership_id: int) -> list:
+def obter_posts_instagram_visiveis(db, loja_id: int) -> list:
     return (
-        db.query(InstagramPost)
-        .filter(InstagramPost.dealership_id == dealership_id, InstagramPost.visivel.is_(True))
-        .order_by(InstagramPost.timestamp.desc())
+        db.query(PostInstagram)
+        .filter(PostInstagram.loja_id == loja_id, PostInstagram.visivel.is_(True))
+        .order_by(PostInstagram.data_hora.desc())
         .all()
     )
 
 
-def get_all_instagram_posts(db, dealership_id: int) -> list:
+def obter_todos_posts_instagram(db, loja_id: int) -> list:
     return (
-        db.query(InstagramPost)
-        .filter(InstagramPost.dealership_id == dealership_id)
-        .order_by(InstagramPost.timestamp.desc())
+        db.query(PostInstagram)
+        .filter(PostInstagram.loja_id == loja_id)
+        .order_by(PostInstagram.data_hora.desc())
         .all()
     )
 
 
-def upsert_instagram_post(db, dealership_id: int, data: dict) -> InstagramPost:
+def salvar_post_instagram(db, loja_id: int, data: dict) -> PostInstagram:
     post = (
-        db.query(InstagramPost)
-        .filter(InstagramPost.dealership_id == dealership_id, InstagramPost.media_id == data["media_id"])
+        db.query(PostInstagram)
+        .filter(PostInstagram.loja_id == loja_id, PostInstagram.id_midia == data["id_midia"])
         .first()
     )
     if not post:
-        post = InstagramPost(dealership_id=dealership_id, media_id=data["media_id"])
+        post = PostInstagram(loja_id=loja_id, id_midia=data["id_midia"])
         db.add(post)
-    for field in ("caption", "media_type", "media_url", "thumbnail_url", "permalink", "timestamp"):
-        if field in data:
-            setattr(post, field, data[field])
-    post.synced_at = datetime.utcnow()
+    for campo in ("legenda", "tipo_midia", "url_midia", "url_miniatura", "link_permanente", "data_hora"):
+        if campo in data:
+            setattr(post, campo, data[campo])
+    post.sincronizado_em = agora_utc()
     db.commit()
     db.refresh(post)
     return post
 
 
-def set_instagram_post_visibility(db, dealership_id: int, post_id: int, visivel: bool) -> InstagramPost | None:
+def definir_visibilidade_post_instagram(db, loja_id: int, post_id: int, visivel: bool) -> PostInstagram | None:
     post = (
-        db.query(InstagramPost)
-        .filter(InstagramPost.dealership_id == dealership_id, InstagramPost.id == post_id)
+        db.query(PostInstagram)
+        .filter(PostInstagram.loja_id == loja_id, PostInstagram.id == post_id)
         .first()
     )
     if post:
@@ -854,19 +861,19 @@ def set_instagram_post_visibility(db, dealership_id: int, post_id: int, visivel:
 
 
 # ── Avaliações do Google (Fase 3 — ver plano) ───────────────────────────────
-def get_google_reviews(db, dealership_id: int) -> list:
+def obter_avaliacoes_google(db, loja_id: int) -> list:
     return (
-        db.query(GoogleReview)
-        .filter(GoogleReview.dealership_id == dealership_id)
-        .order_by(GoogleReview.id.asc())
+        db.query(AvaliacaoGoogle)
+        .filter(AvaliacaoGoogle.loja_id == loja_id)
+        .order_by(AvaliacaoGoogle.id.asc())
         .all()
     )
 
 
-def replace_google_reviews(db, dealership_id: int, reviews: list) -> None:
-    """Substitui tudo a cada sync — mesmo espírito de replace_vehicle_images, é um cache
+def substituir_avaliacoes_google(db, loja_id: int, avaliacoes: list) -> None:
+    """Substitui tudo a cada sync — mesmo espírito de substituir_imagens_veiculo, é um cache
     simples, não precisa de histórico."""
-    db.query(GoogleReview).filter(GoogleReview.dealership_id == dealership_id).delete()
-    for r in reviews:
-        db.add(GoogleReview(dealership_id=dealership_id, **r))
+    db.query(AvaliacaoGoogle).filter(AvaliacaoGoogle.loja_id == loja_id).delete()
+    for r in avaliacoes:
+        db.add(AvaliacaoGoogle(loja_id=loja_id, **r))
     db.commit()

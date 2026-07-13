@@ -1,42 +1,42 @@
 from fastapi.testclient import TestClient
 
 from database import (
-    GoogleReview,
-    InstagramPost,
-    NewsPost,
+    AvaliacaoGoogle,
+    PostInstagram,
+    Novidade,
     SessionLocal,
-    Vehicle,
-    get_default_dealership,
-    get_or_create_dealership,
+    Veiculo,
+    obter_loja_padrao,
+    obter_ou_criar_loja,
 )
 from main import app
 
 
 def _logged_in_client() -> TestClient:
     client = TestClient(app)
-    client.post("/admin/login", data={"username": "admin", "password": "test-password"})
+    client.post("/admin/login", data={"nome_usuario": "admin", "senha": "test-password"})
     return client
 
 
-def _dealership_id():
+def _loja_id():
     db = SessionLocal()
-    dealership = get_default_dealership(db) or get_or_create_dealership(
-        db, nome="Loja Site Publico", connector_type="supabase", connector_config={}
+    loja = obter_loja_padrao(db) or obter_ou_criar_loja(
+        db, nome="Loja Site Publico", tipo_conector="supabase", config_conector={}
     )
-    dealership_id = dealership.id
+    loja_id = loja.id
     db.close()
-    return dealership_id
+    return loja_id
 
 
-def _make_vehicle(dealership_id, slug, brand="Fiat", model="Mobi", **overrides):
+def _make_veiculo(loja_id, slug, marca="Fiat", modelo="Mobi", **overrides):
     db = SessionLocal()
     data = dict(
-        dealership_id=dealership_id, slug=slug, brand=brand, model=model, year=2022, price=90000.0,
-        status="Disponivel", publication_status="Publicado", body="Hatch", transmission="Manual", fuel="Flex",
+        loja_id=loja_id, slug=slug, marca=marca, modelo=modelo, ano=2022, preco=90000.0,
+        status="Disponivel", status_publicacao="Publicado", carroceria="Hatch", cambio="Manual", combustivel="Flex",
     )
     data.update(overrides)
-    vehicle = Vehicle(**data)
-    db.add(vehicle)
+    veiculo = Veiculo(**data)
+    db.add(veiculo)
     db.commit()
     db.close()
     return slug
@@ -57,12 +57,12 @@ def test_home_hides_video_and_review_sections_when_empty():
 
 
 def test_home_shows_video_section_when_instagram_post_visible():
-    dealership_id = _dealership_id()
+    loja_id = _loja_id()
     db = SessionLocal()
-    db.add(InstagramPost(
-        dealership_id=dealership_id, media_id="home-video-visivel", media_type="VIDEO",
-        media_url="https://example.com/v.mp4", thumbnail_url="https://example.com/thumb.jpg",
-        permalink="https://instagram.com/p/xyz", visivel=True,
+    db.add(PostInstagram(
+        loja_id=loja_id, id_midia="home-video-visivel", tipo_midia="VIDEO",
+        url_midia="https://example.com/v.mp4", url_miniatura="https://example.com/thumb.jpg",
+        link_permanente="https://instagram.com/p/xyz", visivel=True,
     ))
     db.commit()
     db.close()
@@ -73,11 +73,11 @@ def test_home_shows_video_section_when_instagram_post_visible():
 
 
 def test_home_shows_reviews_when_present():
-    dealership_id = _dealership_id()
+    loja_id = _loja_id()
     db = SessionLocal()
-    db.add(GoogleReview(
-        dealership_id=dealership_id, author_name="Cliente Satisfeito", rating=5,
-        text="Ótimo atendimento!", relative_time_description="há 1 semana",
+    db.add(AvaliacaoGoogle(
+        loja_id=loja_id, nome_autor="Cliente Satisfeito", nota=5,
+        texto="Ótimo atendimento!", tempo_relativo="há 1 semana",
     ))
     db.commit()
     db.close()
@@ -99,9 +99,9 @@ def test_consultor_form_creates_lead_and_redirects_to_whatsapp():
     assert "wa.me" in resp.headers["location"]
     assert "Consultor" in resp.headers["location"] or "Consultor%20Teste" in resp.headers["location"]
 
-    from database import get_all_leads
+    from database import obter_todos_leads
     db = SessionLocal()
-    leads = get_all_leads(db, _dealership_id())
+    leads = obter_todos_leads(db, _loja_id())
     db.close()
     match = [l for l in leads if l.telefone == "(44) 99999-1234"]
     assert len(match) == 1
@@ -131,9 +131,9 @@ def test_contato_page_loads():
 
 
 def test_contato_form_creates_lead_without_vehicle():
-    from database import get_all_leads
+    from database import obter_todos_leads
 
-    dealership_id = _dealership_id()
+    loja_id = _loja_id()
     client = TestClient(app)
     resp = client.post(
         "/contato",
@@ -143,9 +143,9 @@ def test_contato_form_creates_lead_without_vehicle():
     assert "Recebemos sua mensagem" in resp.text
 
     db = SessionLocal()
-    leads = get_all_leads(db, dealership_id)
+    leads = obter_todos_leads(db, loja_id)
     db.close()
-    match = [l for l in leads if l.phone_number == "44988887777"]
+    match = [l for l in leads if l.numero_telefone == "44988887777"]
     assert len(match) == 1
     assert match[0].veiculo_interesse is None
     assert match[0].origem == "site"
@@ -153,10 +153,10 @@ def test_contato_form_creates_lead_without_vehicle():
 
 # ── Novidades ────────────────────────────────────────────────────────────
 def test_novidades_lists_only_published_posts():
-    dealership_id = _dealership_id()
+    loja_id = _loja_id()
     db = SessionLocal()
-    db.add(NewsPost(dealership_id=dealership_id, titulo="Post Publicado Novidade", slug="post-publicado-novidade", publicado=True))
-    db.add(NewsPost(dealership_id=dealership_id, titulo="Post Rascunho Novidade", slug="post-rascunho-novidade", publicado=False))
+    db.add(Novidade(loja_id=loja_id, titulo="Post Publicado Novidade", slug="post-publicado-novidade", publicado=True))
+    db.add(Novidade(loja_id=loja_id, titulo="Post Rascunho Novidade", slug="post-rascunho-novidade", publicado=False))
     db.commit()
     db.close()
 
@@ -167,10 +167,10 @@ def test_novidades_lists_only_published_posts():
 
 
 def test_novidade_detail_200_published_404_draft():
-    dealership_id = _dealership_id()
+    loja_id = _loja_id()
     db = SessionLocal()
-    db.add(NewsPost(dealership_id=dealership_id, titulo="Detalhe Publicado", slug="detalhe-publicado-novidade", publicado=True))
-    db.add(NewsPost(dealership_id=dealership_id, titulo="Detalhe Rascunho", slug="detalhe-rascunho-novidade", publicado=False))
+    db.add(Novidade(loja_id=loja_id, titulo="Detalhe Publicado", slug="detalhe-publicado-novidade", publicado=True))
+    db.add(Novidade(loja_id=loja_id, titulo="Detalhe Rascunho", slug="detalhe-rascunho-novidade", publicado=False))
     db.commit()
     db.close()
 
@@ -185,9 +185,9 @@ def test_novidade_detail_200_published_404_draft():
 
 # ── Estoque com filtros ──────────────────────────────────────────────────
 def test_catalog_filter_by_marca():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-marca-toyota", brand="Toyota", model="Corolla Filtro")
-    _make_vehicle(dealership_id, "filtro-marca-fiat", brand="Fiat", model="Mobi Filtro")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-marca-toyota", marca="Toyota", modelo="Corolla Filtro")
+    _make_veiculo(loja_id, "filtro-marca-fiat", marca="Fiat", modelo="Mobi Filtro")
 
     client = TestClient(app)
     resp = client.get("/veiculos", params={"marca": "Toyota"})
@@ -196,9 +196,9 @@ def test_catalog_filter_by_marca():
 
 
 def test_catalog_filter_by_preco_range():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-preco-barato", model="Barato Filtro Preco", price=50000.0)
-    _make_vehicle(dealership_id, "filtro-preco-caro", model="Caro Filtro Preco", price=200000.0)
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-preco-barato", modelo="Barato Filtro Preco", preco=50000.0)
+    _make_veiculo(loja_id, "filtro-preco-caro", modelo="Caro Filtro Preco", preco=200000.0)
 
     client = TestClient(app)
     resp = client.get("/veiculos", params={"preco_min": "100000"})
@@ -207,9 +207,9 @@ def test_catalog_filter_by_preco_range():
 
 
 def test_catalog_filter_by_carroceria_cambio_combustivel():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-suv-auto", model="SUV Filtro Combo", body="SUV", transmission="Automático", fuel="Diesel")
-    _make_vehicle(dealership_id, "filtro-hatch-manual", model="Hatch Filtro Combo", body="Hatch", transmission="Manual", fuel="Flex")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-suv-auto", modelo="SUV Filtro Combo", carroceria="SUV", cambio="Automático", combustivel="Diesel")
+    _make_veiculo(loja_id, "filtro-hatch-manual", modelo="Hatch Filtro Combo", carroceria="Hatch", cambio="Manual", combustivel="Flex")
 
     client = TestClient(app)
     resp = client.get("/veiculos", params={"carroceria": "SUV", "cambio": "Automático", "combustivel": "Diesel"})
@@ -218,9 +218,9 @@ def test_catalog_filter_by_carroceria_cambio_combustivel():
 
 
 def test_catalog_filter_by_preco_max():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-preco-max-barato", model="Barato Filtro Preco Max", price=50000.0)
-    _make_vehicle(dealership_id, "filtro-preco-max-caro", model="Caro Filtro Preco Max", price=200000.0)
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-preco-max-barato", modelo="Barato Filtro Preco Max", preco=50000.0)
+    _make_veiculo(loja_id, "filtro-preco-max-caro", modelo="Caro Filtro Preco Max", preco=200000.0)
 
     client = TestClient(app)
     resp = client.get("/veiculos", params={"preco_max": "100000"})
@@ -229,10 +229,10 @@ def test_catalog_filter_by_preco_max():
 
 
 def test_catalog_filter_by_preco_min_and_max_combined():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-preco-combo-baixo", model="Baixo Filtro Preco Combo", price=30000.0)
-    _make_vehicle(dealership_id, "filtro-preco-combo-medio", model="Medio Filtro Preco Combo", price=100000.0)
-    _make_vehicle(dealership_id, "filtro-preco-combo-alto", model="Alto Filtro Preco Combo", price=300000.0)
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-preco-combo-baixo", modelo="Baixo Filtro Preco Combo", preco=30000.0)
+    _make_veiculo(loja_id, "filtro-preco-combo-medio", modelo="Medio Filtro Preco Combo", preco=100000.0)
+    _make_veiculo(loja_id, "filtro-preco-combo-alto", modelo="Alto Filtro Preco Combo", preco=300000.0)
 
     client = TestClient(app)
     resp = client.get("/veiculos", params={"preco_min": "50000", "preco_max": "200000"})
@@ -245,8 +245,8 @@ def test_catalog_form_submit_with_all_fields_blank_does_not_422():
     """Reproduz o bug real: o form manda preco_min/preco_max="" quando o usuário clica em
     "Filtrar" sem preencher nada — isso não pode virar erro de validação (422), tem que
     tratar como "sem filtro" e devolver a lista completa."""
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-form-vazio", model="Form Vazio Sem Filtro")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-form-vazio", modelo="Form Vazio Sem Filtro")
 
     client = TestClient(app)
     resp = client.get(
@@ -258,9 +258,9 @@ def test_catalog_form_submit_with_all_fields_blank_does_not_422():
 
 
 def test_catalog_filter_with_some_fields_blank_and_others_filled():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-parcial-toyota", brand="Toyota", model="Corolla Filtro Parcial")
-    _make_vehicle(dealership_id, "filtro-parcial-fiat", brand="Fiat", model="Mobi Filtro Parcial")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-parcial-toyota", marca="Toyota", modelo="Corolla Filtro Parcial")
+    _make_veiculo(loja_id, "filtro-parcial-fiat", marca="Fiat", modelo="Mobi Filtro Parcial")
 
     client = TestClient(app)
     resp = client.get(
@@ -273,8 +273,8 @@ def test_catalog_filter_with_some_fields_blank_and_others_filled():
 
 
 def test_catalog_filter_with_non_numeric_preco_does_not_422():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-preco-invalido", model="Preco Invalido Sem Crash")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-preco-invalido", modelo="Preco Invalido Sem Crash")
 
     client = TestClient(app)
     resp = client.get("/veiculos", params={"preco_min": "abc"})
@@ -283,7 +283,7 @@ def test_catalog_filter_with_non_numeric_preco_does_not_422():
 
 
 def test_catalog_no_results_message_when_filters_match_nothing():
-    _dealership_id()
+    _loja_id()
     client = TestClient(app)
     resp = client.get("/veiculos", params={"marca": "MarcaQueNaoExisteNoBancoDeDados"})
     assert resp.status_code == 200
@@ -291,8 +291,8 @@ def test_catalog_no_results_message_when_filters_match_nothing():
 
 
 def test_catalog_filter_dropdowns_populated_from_real_stock():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "filtro-opcoes-marca", brand="Chevrolet", model="Onix Filtro Opcoes", body="Sedan", transmission="Automático", fuel="Gasolina")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-opcoes-marca", marca="Chevrolet", modelo="Onix Filtro Opcoes", carroceria="Sedan", cambio="Automático", combustivel="Gasolina")
 
     client = TestClient(app)
     resp = client.get("/veiculos")
@@ -319,8 +319,8 @@ def test_admin_can_create_edit_delete_novidade():
     assert resp.status_code in (302, 303)
 
     db = SessionLocal()
-    from database import get_all_news_posts
-    posts = get_all_news_posts(db, _dealership_id())
+    from database import obter_todas_novidades
+    posts = obter_todas_novidades(db, _loja_id())
     db.close()
     match = [p for p in posts if p.titulo == "Chegou Novidade Admin"]
     assert len(match) == 1
@@ -337,7 +337,7 @@ def test_admin_can_create_edit_delete_novidade():
     assert resp.status_code in (302, 303)
 
     db = SessionLocal()
-    posts = get_all_news_posts(db, _dealership_id())
+    posts = obter_todas_novidades(db, _loja_id())
     db.close()
     assert any(p.titulo == "Novidade Admin Editada" for p in posts)
 
@@ -345,18 +345,18 @@ def test_admin_can_create_edit_delete_novidade():
     assert resp.status_code in (302, 303)
 
     db = SessionLocal()
-    posts = get_all_news_posts(db, _dealership_id())
+    posts = obter_todas_novidades(db, _loja_id())
     db.close()
     assert not any(p.slug == slug for p in posts)
 
 
 # ── Admin: curadoria de Instagram ────────────────────────────────────────
 def test_admin_instagram_toggle_visibility():
-    dealership_id = _dealership_id()
+    loja_id = _loja_id()
     db = SessionLocal()
-    post = InstagramPost(
-        dealership_id=dealership_id, media_id="admin-toggle-media", media_type="VIDEO",
-        media_url="https://example.com/v2.mp4", permalink="https://instagram.com/p/abc", visivel=False,
+    post = PostInstagram(
+        loja_id=loja_id, id_midia="admin-toggle-media", tipo_midia="VIDEO",
+        url_midia="https://example.com/v2.mp4", link_permanente="https://instagram.com/p/abc", visivel=False,
     )
     db.add(post)
     db.commit()
@@ -368,8 +368,8 @@ def test_admin_instagram_toggle_visibility():
     resp = client.post(f"/admin/instagram/{post_id}/visibilidade", data={"visivel": "on"}, follow_redirects=False)
     assert resp.status_code in (302, 303)
 
-    from database import get_visible_instagram_posts
+    from database import obter_posts_instagram_visiveis
     db = SessionLocal()
-    visible = get_visible_instagram_posts(db, dealership_id)
+    visible = obter_posts_instagram_visiveis(db, loja_id)
     db.close()
     assert any(p.id == post_id for p in visible)

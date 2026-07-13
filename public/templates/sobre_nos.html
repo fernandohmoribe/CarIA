@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="max-w-2xl mx-auto py-6">
-    <h1 class="text-2xl font-semibold text-zinc-900 mb-6 text-center">Sobre a {{ dealership_name }}</h1>
+    <h1 class="text-2xl font-semibold text-zinc-900 mb-6 text-center">Sobre a {{ nome_loja }}</h1>
     <p class="text-zinc-600 leading-relaxed whitespace-pre-line">{{ quem_somos }}</p>
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-10">
@@ -21,10 +21,10 @@
         </div>
     </div>
 
-    {% if dealership_address or dealership_hours %}
+    {% if endereco_loja or horario_loja %}
     <div class="bg-white border border-zinc-200 rounded-2xl p-5 mt-10 shadow-sm text-sm text-zinc-600">
-        {% if dealership_address %}<p>📍 {{ dealership_address }}</p>{% endif %}
-        {% if dealership_hours %}<p class="mt-1">🕐 {{ dealership_hours }}</p>{% endif %}
+        {% if endereco_loja %}<p>📍 {{ endereco_loja }}</p>{% endif %}
+        {% if horario_loja %}<p class="mt-1">🕐 {{ horario_loja }}</p>{% endif %}
     </div>
     {% endif %}
 

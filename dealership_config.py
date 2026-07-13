@@ -14,7 +14,7 @@ TIMEZONE_OFFSET_HOURS = float(os.getenv("TIMEZONE_OFFSET_HOURS", "-3"))
 BUSINESS_TZ = timezone(timedelta(hours=TIMEZONE_OFFSET_HOURS))
 
 
-def to_local(dt: datetime | None) -> datetime | None:
+def para_local(dt: datetime | None) -> datetime | None:
     """Converte um datetime naive armazenado em UTC (padrão do banco) pro fuso do negócio."""
     if dt is None:
         return None
@@ -32,10 +32,10 @@ WAHA_BASE_URL = os.getenv("WAHA_BASE_URL", "http://localhost:8080")
 WAHA_SESSION = os.getenv("WAHA_SESSION", "default")
 WAHA_API_KEY = os.getenv("WAHA_API_KEY", "")
 
-_raw = os.getenv("TEST_PHONES", "")
-TEST_PHONES = {p.strip() for p in _raw.split(",") if p.strip()}
+_bruto = os.getenv("TEST_PHONES", "")
+TEST_PHONES = {p.strip() for p in _bruto.split(",") if p.strip()}
 
-_CARRO_WORDS = {
+_PALAVRAS_CARRO = {
     "carro", "veiculo", "veículo", "carros", "veiculos", "veículos", "modelo",
     "comprar", "financiamento", "financiar", "entrada", "test drive", "test-drive",
     "testdrive", "visita", "visitar", "showroom", "loja", "estoque", "troca",
@@ -59,15 +59,15 @@ if DEALERSHIP_PHONE:
     )
 
 
-def check_faq(text: str, has_history: bool = False):
-    if has_history:
+def verificar_faq(texto: str, tem_historico: bool = False):
+    if tem_historico:
         return None
-    lower = text.lower()
-    if any(w in lower for w in _CARRO_WORDS):
+    minusculo = texto.lower()
+    if any(w in minusculo for w in _PALAVRAS_CARRO):
         return None
-    for keywords, answer in FAQ:
-        if any(kw in lower for kw in keywords):
-            return answer
+    for palavras_chave, resposta in FAQ:
+        if any(kw in minusculo for kw in palavras_chave):
+            return resposta
     return None
 
 

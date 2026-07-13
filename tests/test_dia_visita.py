@@ -5,8 +5,8 @@ real à IA."""
 from datetime import datetime
 from unittest.mock import patch
 
-from claude_agent import _handle_lead_tool, _resolver_dia_visita
-from database import Lead, SessionLocal, get_or_create_dealership
+from claude_agent import _processar_tool_lead, _resolver_dia_visita
+from database import Lead, SessionLocal, obter_ou_criar_loja
 
 
 def _fake_now(dt):
@@ -49,26 +49,26 @@ def test_resolver_dia_visita_none_quando_vazio():
 
 def test_handle_lead_tool_resolve_dia_visita_para_preferencia_contato():
     db = SessionLocal()
-    dealership = get_or_create_dealership(
-        db, nome="Loja Dia Visita", connector_type="supabase", connector_config={}
+    loja = obter_ou_criar_loja(
+        db, nome="Loja Dia Visita", tipo_conector="supabase", config_conector={}
     )
-    dealership_id = dealership.id
+    loja_id = loja.id
     db.close()
 
     with _fake_now(datetime(2026, 7, 4, 10, 0)):  # sábado
-        result = _handle_lead_tool(
+        resultado = _processar_tool_lead(
             {"nome": "Cliente Teste", "dia_visita": "quinta-feira", "periodo_visita": "manhã"},
-            dealership_id,
+            loja_id,
             "5544900000401@c.us",
         )
 
-    assert result["preferencia_contato"] == "quinta-feira, 09/07/2026 de manhã"
+    assert resultado["preferencia_contato"] == "quinta-feira, 09/07/2026 de manhã"
     # dia_visita/periodo_visita não são campos do Lead — não podem vazar pro resultado
-    assert "dia_visita" not in result
-    assert "periodo_visita" not in result
+    assert "dia_visita" not in resultado
+    assert "periodo_visita" not in resultado
 
     db = SessionLocal()
-    lead = db.query(Lead).filter(Lead.phone_number == "5544900000401@c.us").first()
+    lead = db.query(Lead).filter(Lead.numero_telefone == "5544900000401@c.us").first()
     assert lead.preferencia_contato == "quinta-feira, 09/07/2026 de manhã"
     db.close()
 
@@ -77,16 +77,16 @@ def test_handle_lead_tool_mantem_preferencia_contato_livre_quando_sem_dia_visita
     """Fallback: cliente deu uma data específica ('15 de agosto') que não é um dia da semana —
     a IA usa preferencia_contato como texto livre, sem dia_visita, e isso passa direto."""
     db = SessionLocal()
-    dealership = get_or_create_dealership(
-        db, nome="Loja Dia Visita", connector_type="supabase", connector_config={}
+    loja = obter_ou_criar_loja(
+        db, nome="Loja Dia Visita", tipo_conector="supabase", config_conector={}
     )
-    dealership_id = dealership.id
+    loja_id = loja.id
     db.close()
 
-    result = _handle_lead_tool(
+    resultado = _processar_tool_lead(
         {"nome": "Outro Cliente", "preferencia_contato": "dia 15 de agosto"},
-        dealership_id,
+        loja_id,
         "5544900000402@c.us",
     )
 
-    assert result["preferencia_contato"] == "dia 15 de agosto"
+    assert resultado["preferencia_contato"] == "dia 15 de agosto"

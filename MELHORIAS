@@ -1,28 +1,18 @@
+Melhorias / débito técnico — lista viva, não é spec formal.
 
+- [feito 2026-07-13] Fotos .webp sendo servidas com content-type text/plain em vez de
+  image/webp (mimetypes do Python não conhecia a extensão nesse ambiente). Corrigido em
+  main.py com mimetypes.add_type("image/webp", ".webp").
+- [feito 2026-07-13] Warnings de depreciação limpos: datetime.utcnow() -> agora_utc()
+  (database.py) em todo o projeto; TemplateResponse(nome, {...}) -> TemplateResponse(request,
+  nome, {...}) (admin/routes.py e public/routes.py), acompanhando a mudança de API do
+  Starlette.
 
-- Preciso fazer perfis
-Administrador e vendedor.
-O que voce sugere?
-
-- Status
-Novo 0
-Qualificado 0
-Agendado 1
-Transferido 0
-Contatado 0
-Convertido 0
-Perdido 0
-
-
-
-
-
-
-lgpd
-
-ausencia de late limit
-ausencia de cors configurado
-dados sensiveis dos usuarios
-jwt token, enviar via heards
-invalidar o logout
-sql injection
+- Perfis diferenciados no admin (administrador vs vendedor) — hoje é tudo um usuário só,
+  sem distinção de permissão. Fica pra quando fizer falta de verdade (decisão já tomada
+  antes, ver histórico).
+- LGPD: dados de cliente (nome, telefone, email) ficam em texto puro no SQLite, sem
+  política de retenção/anonimização/exclusão a pedido do titular. Vale revisar antes da
+  base de leads crescer muito.
+- Warning residual (fora do nosso código): bs4/lxml reclama de "strip_cdata" deprecated
+  no parser — é da lib, não do nosso uso dela; só bumping de versão resolve, não é urgente.

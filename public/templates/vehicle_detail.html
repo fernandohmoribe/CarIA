@@ -1,17 +1,17 @@
 {% extends "base_public.html" %}
-{% block title %}{{ vehicle.brand }} {{ vehicle.model }}{% endblock %}
+{% block title %}{{ veiculo.marca }} {{ veiculo.modelo }}{% endblock %}
 {% block content %}
 
 <a href="/veiculos" class="text-zinc-500 text-sm hover:text-zinc-700">← Voltar pros veículos</a>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
     <div>
-        {% set cover_src = img_src(vehicle.cover_local_path, vehicle.cover_image_url, 1000, 750) %}
-        <img id="main-photo" src="{{ cover_src }}" class="w-full rounded-2xl bg-zinc-200 object-cover" style="aspect-ratio: 4/3;" alt="{{ vehicle.brand }} {{ vehicle.model }}">
-        {% if vehicle.images|length > 1 %}
+        {% set capa_src = imagem_src(veiculo.caminho_capa, veiculo.url_imagem_capa, 1000, 750) %}
+        <img id="main-photo" src="{{ capa_src }}" class="w-full rounded-2xl bg-zinc-200 object-cover" style="aspect-ratio: 4/3;" alt="{{ veiculo.marca }} {{ veiculo.modelo }}">
+        {% if veiculo.imagens|length > 1 %}
         <div class="flex gap-2 mt-2 overflow-x-auto pb-1">
-            {% for img in vehicle.images %}
-            <img src="{{ img_src(img.local_path, img.image_url, 1000, 750) }}" loading="lazy"
+            {% for img in veiculo.imagens %}
+            <img src="{{ imagem_src(img.caminho_local, img.url_imagem, 1000, 750) }}" loading="lazy"
                  class="w-20 h-16 object-cover rounded-lg flex-shrink-0 opacity-70 hover:opacity-100 transition cursor-pointer"
                  onclick="document.getElementById('main-photo').src = this.src">
             {% endfor %}
@@ -20,25 +20,25 @@
     </div>
 
     <div>
-        <h1 class="text-2xl font-semibold text-zinc-900">{{ vehicle.brand }} {{ vehicle.model }}</h1>
-        <p class="text-zinc-500 text-sm mt-1">{{ vehicle.version or "" }}</p>
-        <p class="text-brand text-2xl font-bold mt-3">R$ {{ vehicle.price|brl }}</p>
+        <h1 class="text-2xl font-semibold text-zinc-900">{{ veiculo.marca }} {{ veiculo.modelo }}</h1>
+        <p class="text-zinc-500 text-sm mt-1">{{ veiculo.versao or "" }}</p>
+        <p class="text-brand text-2xl font-bold mt-3">R$ {{ veiculo.preco|brl }}</p>
 
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4 text-sm">
-            {% if vehicle.cidade %}<div><span class="text-zinc-500">Cidade</span><br>{{ vehicle.cidade }}</div>{% endif %}
-            <div><span class="text-zinc-500">Ano</span><br>{{ vehicle.year }}</div>
-            <div><span class="text-zinc-500">KM</span><br>{{ "{:,}".format(vehicle.mileage or 0).replace(",", ".") }}</div>
-            <div><span class="text-zinc-500">Câmbio</span><br>{{ vehicle.transmission }}</div>
-            <div><span class="text-zinc-500">Carroceria</span><br>{{ vehicle.body }}</div>
-            <div><span class="text-zinc-500">Combustível</span><br>{{ vehicle.fuel }}</div>
-            <div><span class="text-zinc-500">Cor</span><br>{{ vehicle.color }}</div>
-            {% if vehicle.final_placa %}<div><span class="text-zinc-500">Final de placa</span><br>{{ vehicle.final_placa }}</div>{% endif %}
+            {% if veiculo.cidade %}<div><span class="text-zinc-500">Cidade</span><br>{{ veiculo.cidade }}</div>{% endif %}
+            <div><span class="text-zinc-500">Ano</span><br>{{ veiculo.ano }}</div>
+            <div><span class="text-zinc-500">KM</span><br>{{ "{:,}".format(veiculo.quilometragem or 0).replace(",", ".") }}</div>
+            <div><span class="text-zinc-500">Câmbio</span><br>{{ veiculo.cambio }}</div>
+            <div><span class="text-zinc-500">Carroceria</span><br>{{ veiculo.carroceria }}</div>
+            <div><span class="text-zinc-500">Combustível</span><br>{{ veiculo.combustivel }}</div>
+            <div><span class="text-zinc-500">Cor</span><br>{{ veiculo.cor }}</div>
+            {% if veiculo.final_placa %}<div><span class="text-zinc-500">Final de placa</span><br>{{ veiculo.final_placa }}</div>{% endif %}
         </div>
 
         {% set flags = [
-            ("Blindado", vehicle.blindado), ("Aceita troca", vehicle.aceita_troca),
-            ("Único dono", vehicle.unico_dono), ("Revisões pela concessionária", vehicle.revisoes_concessionaria),
-            ("IPVA pago", vehicle.ipva_pago), ("Licenciado", vehicle.licenciado), ("Garantia de fábrica", vehicle.garantia_fabrica),
+            ("Blindado", veiculo.blindado), ("Aceita troca", veiculo.aceita_troca),
+            ("Único dono", veiculo.unico_dono), ("Revisões pela concessionária", veiculo.revisoes_concessionaria),
+            ("IPVA pago", veiculo.ipva_pago), ("Licenciado", veiculo.licenciado), ("Garantia de fábrica", veiculo.garantia_fabrica),
         ] %}
         {% if flags|selectattr("1")|list %}
         <div class="flex flex-wrap gap-2 mt-4">
@@ -50,13 +50,13 @@
         </div>
         {% endif %}
 
-        {% if vehicle.overview %}
-        <p class="text-zinc-700 text-sm mt-4 whitespace-pre-line leading-relaxed">{{ vehicle.overview }}</p>
+        {% if veiculo.descricao %}
+        <p class="text-zinc-700 text-sm mt-4 whitespace-pre-line leading-relaxed">{{ veiculo.descricao }}</p>
         {% endif %}
 
-        {% if vehicle.highlights() %}
+        {% if veiculo.destaques() %}
         <ul class="text-zinc-600 text-sm mt-4 grid grid-cols-2 gap-x-4 gap-y-1">
-            {% for h in vehicle.highlights() %}
+            {% for h in veiculo.destaques() %}
             <li>• {{ h }}</li>
             {% endfor %}
         </ul>
@@ -70,7 +70,7 @@
             {% if erro %}
             <p class="text-red-600 text-xs mb-3">{{ erro }}</p>
             {% endif %}
-            <form method="post" action="/veiculos/{{ vehicle.slug }}/interesse" class="space-y-3">
+            <form method="post" action="/veiculos/{{ veiculo.slug }}/interesse" class="space-y-3">
                 <input name="nome" required placeholder="Seu nome"
                        class="w-full bg-zinc-50 border border-zinc-300 rounded-lg px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400">
                 <input name="telefone" required placeholder="Telefone (com DDD)"

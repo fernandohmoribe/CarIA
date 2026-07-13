@@ -6,14 +6,14 @@
     <div>
         <h1 class="text-2xl font-semibold text-zinc-900 mb-4">Fale com a gente</h1>
         <div class="space-y-2 text-sm text-zinc-600">
-            {% if dealership_phone %}<p>📞 {{ dealership_phone }}</p>{% endif %}
-            {% if dealership_address %}<p>📍 {{ dealership_address }}</p>{% endif %}
-            {% if dealership_hours %}<p>🕐 {{ dealership_hours }}</p>{% endif %}
+            {% if telefone_loja %}<p>📞 {{ telefone_loja }}</p>{% endif %}
+            {% if endereco_loja %}<p>📍 {{ endereco_loja }}</p>{% endif %}
+            {% if horario_loja %}<p>🕐 {{ horario_loja }}</p>{% endif %}
         </div>
-        {% if dealership_address %}
+        {% if endereco_loja %}
         <div class="mt-5 rounded-2xl overflow-hidden border border-zinc-200 shadow-sm">
             <iframe
-                src="https://maps.google.com/maps?q={{ dealership_address|urlencode }}&output=embed"
+                src="https://maps.google.com/maps?q={{ endereco_loja|urlencode }}&output=embed"
                 width="100%" height="280" style="border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade">
             </iframe>
         </div>

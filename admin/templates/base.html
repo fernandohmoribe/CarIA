@@ -26,18 +26,18 @@
     </style>
 </head>
 <body class="bg-[#0a0a0c] text-zinc-200 min-h-screen">
-    {% if request.session.get('logged_in') %}
+    {% if request.session.get('logado') %}
     <nav class="bg-[#111113] border-b border-zinc-800 px-4 sm:px-6 py-3 sm:py-4">
         <div class="flex items-center justify-between">
             <span class="text-lg font-semibold text-amber-450 tracking-wide">🚘 CarIA <span class="text-zinc-500 font-normal text-sm hidden sm:inline">painel</span></span>
             <div class="hidden sm:flex items-center gap-8">
                 <div class="flex gap-1 text-sm">
-                    <a href="/admin/dashboard" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/dashboard' %}bg-zinc-800 text-amber-450{% endif %}">Dashboard</a>
-                    <a href="/admin/vehicles" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/vehicles' %}bg-zinc-800 text-amber-450{% endif %}">Veículos</a>
+                    <a href="/admin/dashboard" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/dashboard' %}bg-zinc-800 text-amber-450{% endif %}">Painel</a>
+                    <a href="/admin/veiculos" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/veiculos' %}bg-zinc-800 text-amber-450{% endif %}">Veículos</a>
                     <a href="/admin/leads" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if '/admin/leads' in request.url.path %}bg-zinc-800 text-amber-450{% endif %}">Leads</a>
                     <a href="/admin/novidades" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if '/admin/novidades' in request.url.path %}bg-zinc-800 text-amber-450{% endif %}">Novidades</a>
                     <a href="/admin/instagram" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/instagram' %}bg-zinc-800 text-amber-450{% endif %}">Instagram</a>
-                    <a href="/admin/sync" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/sync' %}bg-zinc-800 text-amber-450{% endif %}">Sincronização</a>
+                    <a href="/admin/sincronizacao" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/sincronizacao' %}bg-zinc-800 text-amber-450{% endif %}">Sincronização</a>
                     <a href="/admin/testar-bot" class="px-3 py-2 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/testar-bot' %}bg-zinc-800 text-amber-450{% endif %}">Testar Bot</a>
                 </div>
                 <a href="/admin/logout" class="text-sm text-zinc-400 hover:text-zinc-200 transition">Sair</a>
@@ -52,12 +52,12 @@
             </button>
         </div>
         <div id="nav-menu" class="hidden sm:hidden flex flex-col gap-1 mt-3 pb-1 text-sm">
-            <a href="/admin/dashboard" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/dashboard' %}bg-zinc-800 text-amber-450{% endif %}">Dashboard</a>
-            <a href="/admin/vehicles" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/vehicles' %}bg-zinc-800 text-amber-450{% endif %}">Veículos</a>
+            <a href="/admin/dashboard" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/dashboard' %}bg-zinc-800 text-amber-450{% endif %}">Painel</a>
+            <a href="/admin/veiculos" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/veiculos' %}bg-zinc-800 text-amber-450{% endif %}">Veículos</a>
             <a href="/admin/leads" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if '/admin/leads' in request.url.path %}bg-zinc-800 text-amber-450{% endif %}">Leads</a>
             <a href="/admin/novidades" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if '/admin/novidades' in request.url.path %}bg-zinc-800 text-amber-450{% endif %}">Novidades</a>
             <a href="/admin/instagram" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/instagram' %}bg-zinc-800 text-amber-450{% endif %}">Instagram</a>
-            <a href="/admin/sync" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/sync' %}bg-zinc-800 text-amber-450{% endif %}">Sincronização</a>
+            <a href="/admin/sincronizacao" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/sincronizacao' %}bg-zinc-800 text-amber-450{% endif %}">Sincronização</a>
             <a href="/admin/testar-bot" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition {% if request.url.path == '/admin/testar-bot' %}bg-zinc-800 text-amber-450{% endif %}">Testar Bot</a>
             <a href="/admin/logout" class="px-3 py-2.5 rounded-md hover:bg-zinc-800 transition text-zinc-400">Sair</a>
         </div>

@@ -22,13 +22,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from database import SessionLocal, get_default_dealership, upsert_instagram_post
+from database import SessionLocal, obter_loja_padrao, salvar_post_instagram
 
 GRAPH_API_BASE = "https://graph.instagram.com"
+# Nomes de campo da API do Instagram (contrato externo) — não são nosso código, ficam em inglês.
 MEDIA_FIELDS = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp"
 
 
-def run_sync() -> int:
+def rodar_sincronizacao() -> int:
     access_token = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
     ig_user_id = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
     if not access_token or not ig_user_id:
@@ -37,8 +38,8 @@ def run_sync() -> int:
 
     db = SessionLocal()
     try:
-        dealership = get_default_dealership(db)
-        if not dealership:
+        loja = obter_loja_padrao(db)
+        if not loja:
             print("Nenhuma loja cadastrada ainda — rode sync_inventory.py primeiro.")
             return 0
 
@@ -51,22 +52,22 @@ def run_sync() -> int:
         items = resp.json().get("data", [])
 
         for item in items:
-            timestamp = None
+            data_hora = None
             if item.get("timestamp"):
                 # A Graph API devolve o offset sem dois-pontos (+0000), formato que
                 # datetime.fromisoformat só passou a aceitar no Python 3.11+.
-                timestamp = datetime.strptime(item["timestamp"], "%Y-%m-%dT%H:%M:%S%z").replace(tzinfo=None)
-            upsert_instagram_post(
+                data_hora = datetime.strptime(item["timestamp"], "%Y-%m-%dT%H:%M:%S%z").replace(tzinfo=None)
+            salvar_post_instagram(
                 db,
-                dealership.id,
+                loja.id,
                 {
-                    "media_id": item["id"],
-                    "caption": item.get("caption"),
-                    "media_type": item.get("media_type"),
-                    "media_url": item.get("media_url"),
-                    "thumbnail_url": item.get("thumbnail_url"),
-                    "permalink": item.get("permalink"),
-                    "timestamp": timestamp,
+                    "id_midia": item["id"],
+                    "legenda": item.get("caption"),
+                    "tipo_midia": item.get("media_type"),
+                    "url_midia": item.get("media_url"),
+                    "url_miniatura": item.get("thumbnail_url"),
+                    "link_permanente": item.get("permalink"),
+                    "data_hora": data_hora,
                 },
             )
         return len(items)
@@ -75,5 +76,5 @@ def run_sync() -> int:
 
 
 if __name__ == "__main__":
-    total = run_sync()
+    total = rodar_sincronizacao()
     print(f"Sincronização do Instagram concluída: {total} post(s) importado(s).")

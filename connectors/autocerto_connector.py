@@ -16,167 +16,167 @@ from collections import defaultdict
 import httpx
 from bs4 import BeautifulSoup
 
-from image_utils import resize_and_save_webp
+from image_utils import redimensionar_e_salvar_webp
 
-from connectors.base import VehicleSourceConnector
+from connectors.base import ConectorFonteVeiculos
 
 _DETAIL_HREF_RE = re.compile(r"^/Veiculo/[^/]+/(\d+)/detalhes")
 _TITLE_RE = re.compile(r"^(?P<head>.+?) (?P<year>\d{4}) - (?P<version>.+?) - R\$\s*(?P<price>[\d.,]+)\s*$")
 
 # Fallback caso a descoberta dinâmica (filtro de marca da listagem) não encontre nada —
 # marcas já confirmadas no catálogo real da Garcia Multimarcas.
-_FALLBACK_BRANDS = [
+_MARCAS_FALLBACK = [
     "Land Rover", "Chevrolet", "Citroen", "Fiat", "Ford", "Honda",
     "Hyundai", "Nissan", "Renault", "Toyota", "Volkswagen",
 ]
 
 
-def _parse_price_brl(text: str | None) -> float | None:
-    if not text:
+def _analisar_preco_brl(texto: str | None) -> float | None:
+    if not texto:
         return None
-    cleaned = text.replace("R$", "").strip().replace(".", "").replace(",", ".")
+    limpo = texto.replace("R$", "").strip().replace(".", "").replace(",", ".")
     try:
-        return float(cleaned)
+        return float(limpo)
     except ValueError:
         return None
 
 
-def _parse_year(text: str | None) -> int | None:
+def _analisar_ano(texto: str | None) -> int | None:
     """"2022/2023" (fabricação/modelo) -> 2023 (ano-modelo); "2019" -> 2019."""
-    if not text:
+    if not texto:
         return None
-    parts = text.strip().split("/")
+    partes = texto.strip().split("/")
     try:
-        return int(parts[-1])
+        return int(partes[-1])
     except ValueError:
         return None
 
 
-def _parse_km(text: str | None) -> int | None:
-    if not text:
+def _analisar_km(texto: str | None) -> int | None:
+    if not texto:
         return None
-    text = text.strip()
-    if text.upper() in ("N/I", ""):
+    texto = texto.strip()
+    if texto.upper() in ("N/I", ""):
         return None
-    digits = re.sub(r"[^\d]", "", text)
-    return int(digits) if digits else None
+    digitos = re.sub(r"[^\d]", "", texto)
+    return int(digitos) if digitos else None
 
 
-class AutoCertoVehicleConnector(VehicleSourceConnector):
+class ConectorAutoCerto(ConectorFonteVeiculos):
     def __init__(self, site_url: str, timeout: float = 30.0):
         self.site_url = site_url.rstrip("/")
         self.timeout = timeout
-        self._images_cache: dict[str, list[dict]] = {}
-        self._known_brands: list[str] | None = None
+        self._cache_imagens: dict[str, list[dict]] = {}
+        self._marcas_conhecidas: list[str] | None = None
 
-    # ── Descoberta de marcas (pro split "BRAND MODEL" do título) ──────────────
+    # ── Descoberta de marcas (pro split "MARCA MODELO" do título) ──────────────
 
-    def _discover_brands(self, listing_soup: BeautifulSoup) -> list[str]:
-        if self._known_brands is not None:
-            return self._known_brands
+    def _descobrir_marcas(self, listing_soup: BeautifulSoup) -> list[str]:
+        if self._marcas_conhecidas is not None:
+            return self._marcas_conhecidas
 
-        brands = []
+        marcas = []
         for a in listing_soup.select('a[href*="marca="]'):
-            title = (a.get("title") or a.get_text(strip=True) or "").strip()
-            if title and title not in brands:
-                brands.append(title)
+            titulo = (a.get("title") or a.get_text(strip=True) or "").strip()
+            if titulo and titulo not in marcas:
+                marcas.append(titulo)
 
-        self._known_brands = brands or list(_FALLBACK_BRANDS)
-        return self._known_brands
+        self._marcas_conhecidas = marcas or list(_MARCAS_FALLBACK)
+        return self._marcas_conhecidas
 
-    def _split_brand_model(self, head: str) -> tuple[str, str]:
-        """head = "BRAND MODEL" em caixa alta. Usa a marca conhecida mais longa que bate
+    def _dividir_marca_modelo(self, head: str) -> tuple[str, str]:
+        """head = "MARCA MODELO" em caixa alta. Usa a marca conhecida mais longa que bate
         como prefixo (resolve marcas de duas palavras tipo "LAND ROVER")."""
         head_upper = head.upper()
-        candidates = sorted(self._known_brands or _FALLBACK_BRANDS, key=len, reverse=True)
-        for brand in candidates:
-            prefix = brand.upper()
-            if head_upper == prefix or head_upper.startswith(prefix + " "):
-                model = head[len(brand):].strip()
-                return brand.title(), model.title() if model else model
+        candidatas = sorted(self._marcas_conhecidas or _MARCAS_FALLBACK, key=len, reverse=True)
+        for marca in candidatas:
+            prefixo = marca.upper()
+            if head_upper == prefixo or head_upper.startswith(prefixo + " "):
+                modelo = head[len(marca):].strip()
+                return marca.title(), modelo.title() if modelo else modelo
 
         # Nenhuma marca conhecida bateu — degrada pra "primeira palavra = marca" em vez
         # de quebrar a sincronização inteira por causa de um veículo.
-        parts = head.split(" ", 1)
-        brand = parts[0].title()
-        model = parts[1].title() if len(parts) > 1 else ""
-        return brand, model
+        partes = head.split(" ", 1)
+        marca = partes[0].title()
+        modelo = partes[1].title() if len(partes) > 1 else ""
+        return marca, modelo
 
     # ── Coleta de URLs de detalhe (com paginação defensiva) ───────────────────
 
-    def _collect_detail_urls(self, client: httpx.Client) -> tuple[list[str], BeautifulSoup]:
+    def _coletar_urls_detalhe(self, client: httpx.Client) -> tuple[list[str], BeautifulSoup]:
         urls: list[str] = []
-        seen: set[str] = set()
-        first_soup: BeautifulSoup | None = None
-        page_url = f"{self.site_url}/Veiculos"
-        visited_pages = 0
+        vistas: set[str] = set()
+        primeiro_soup: BeautifulSoup | None = None
+        url_pagina = f"{self.site_url}/Veiculos"
+        paginas_visitadas = 0
 
-        while page_url and visited_pages < 20:
-            resp = client.get(page_url, timeout=self.timeout)
+        while url_pagina and paginas_visitadas < 20:
+            resp = client.get(url_pagina, timeout=self.timeout)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "lxml")
-            if first_soup is None:
-                first_soup = soup
+            if primeiro_soup is None:
+                primeiro_soup = soup
 
             for a in soup.find_all("a", href=True):
                 href = a["href"]
                 if _DETAIL_HREF_RE.match(href):
                     full = href if href.startswith("http") else f"{self.site_url}{href}"
-                    if full not in seen:
-                        seen.add(full)
+                    if full not in vistas:
+                        vistas.add(full)
                         urls.append(full)
 
-            next_link = soup.find("a", attrs={"rel": "next"}) or next(
+            proximo_link = soup.find("a", attrs={"rel": "next"}) or next(
                 (a for a in soup.find_all("a") if a.get_text(strip=True) in ("Próxima", "próxima", "»", "Próximo")),
                 None,
             )
-            if next_link and next_link.get("href"):
-                href = next_link["href"]
-                page_url = href if href.startswith("http") else f"{self.site_url}{href}"
+            if proximo_link and proximo_link.get("href"):
+                href = proximo_link["href"]
+                url_pagina = href if href.startswith("http") else f"{self.site_url}{href}"
             else:
-                page_url = None
-            visited_pages += 1
+                url_pagina = None
+            paginas_visitadas += 1
 
-        return urls, first_soup
+        return urls, primeiro_soup
 
     # ── Parsing da página de detalhe ───────────────────────────────────────────
 
-    def _parse_detail_page(self, html: str, url: str) -> tuple[dict, list[dict]]:
+    def _analisar_pagina_detalhe(self, html: str, url: str) -> tuple[dict, list[dict]]:
         soup = BeautifulSoup(html, "lxml")
 
         match = _DETAIL_HREF_RE.match(url) or re.search(r"/(\d+)/detalhes", url)
-        external_id = match.group(1) if match else url
+        id_externo = match.group(1) if match else url
 
         # O texto de slug da URL sozinho NÃO é garantidamente único — dois anúncios
         # diferentes (ids diferentes) podem ter o mesmo texto (ex: dois veículos com specs
         # idênticos gerando o mesmo slug), o que colidiria no upsert (que é keyed por
-        # dealership_id+slug) e sobrescreveria um veículo com o outro silenciosamente. O
-        # external_id (sempre único, vem do próprio AutoCerto) resolve isso.
+        # loja_id+slug) e sobrescreveria um veículo com o outro silenciosamente. O
+        # id_externo (sempre único, vem do próprio AutoCerto) resolve isso.
         slug_match = re.search(r"/Veiculo/([^/]+)/\d+/detalhes", url)
-        url_slug = slug_match.group(1) if slug_match else external_id
-        slug = f"{url_slug}-{external_id}"
+        url_slug = slug_match.group(1) if slug_match else id_externo
+        slug = f"{url_slug}-{id_externo}"
 
-        brand = model = version = None
-        year = price = None
+        marca = modelo = versao = None
+        ano = preco = None
 
         title_tag = soup.find("title")
-        title_text = title_tag.get_text(strip=True) if title_tag else ""
-        title_text = title_text.split(":", 1)[-1].strip() if ":" in title_text else title_text
-        title_match = _TITLE_RE.match(title_text)
+        texto_titulo = title_tag.get_text(strip=True) if title_tag else ""
+        texto_titulo = texto_titulo.split(":", 1)[-1].strip() if ":" in texto_titulo else texto_titulo
+        title_match = _TITLE_RE.match(texto_titulo)
         if title_match:
-            brand, model = self._split_brand_model(title_match.group("head").strip())
-            year = _parse_year(title_match.group("year"))
-            version = title_match.group("version").strip().title()
-            price = _parse_price_brl(title_match.group("price"))
+            marca, modelo = self._dividir_marca_modelo(title_match.group("head").strip())
+            ano = _analisar_ano(title_match.group("year"))
+            versao = title_match.group("version").strip().title()
+            preco = _analisar_preco_brl(title_match.group("price"))
 
         preco_div = soup.select_one("div.precoVeiculo strong")
         if preco_div:
-            parsed = _parse_price_brl(preco_div.get_text(strip=True))
-            if parsed is not None:
-                price = parsed
+            analisado = _analisar_preco_brl(preco_div.get_text(strip=True))
+            if analisado is not None:
+                preco = analisado
 
-        transmission = fuel = None
-        mileage = None
+        cambio = combustivel = None
+        quilometragem = None
         for li in soup.select("ul.listadados li.col5"):
             label_el = li.select_one("span.info")
             value_el = li.select_one("span.info_destaque")
@@ -185,104 +185,104 @@ class AutoCertoVehicleConnector(VehicleSourceConnector):
             label = label_el.get_text(strip=True).lower()
             value = value_el.get_text(strip=True)
             if label == "ano":
-                year = _parse_year(value) or year
+                ano = _analisar_ano(value) or ano
             elif label in ("câmbio", "cambio"):
-                transmission = value
+                cambio = value
             elif label in ("combustível", "combustivel"):
-                fuel = value
+                combustivel = value
             elif label == "km":
-                mileage = _parse_km(value)
+                quilometragem = _analisar_km(value)
 
         overview_el = soup.select_one("div#vehicle-overview")
-        overview = None
+        descricao = None
         if overview_el:
-            paragraphs = [p.get_text(" ", strip=True) for p in overview_el.find_all("p")]
-            overview = "\n".join(p for p in paragraphs if p) or overview_el.get_text(" ", strip=True) or None
+            paragrafos = [p.get_text(" ", strip=True) for p in overview_el.find_all("p")]
+            descricao = "\n".join(p for p in paragrafos if p) or overview_el.get_text(" ", strip=True) or None
 
-        highlights: list[str] = []
+        destaques: list[str] = []
         features_div = soup.select_one("div#vehicle-add-features")
         if features_div:
-            lists = features_div.select("ul.add-features-list")
-            if lists:
-                highlights.extend(li.get_text(strip=True) for li in lists[0].select("li"))
-            if len(lists) > 1:
-                extras = [li.get_text(strip=True) for li in lists[1].select("li")]
-                highlights.extend(extras[:4])
-            highlights = highlights[:6]
+            listas = features_div.select("ul.add-features-list")
+            if listas:
+                destaques.extend(li.get_text(strip=True) for li in listas[0].select("li"))
+            if len(listas) > 1:
+                extras = [li.get_text(strip=True) for li in listas[1].select("li")]
+                destaques.extend(extras[:4])
+            destaques = destaques[:6]
 
-        image_urls: list[str] = []
+        urls_imagem: list[str] = []
         for img in soup.find_all("img"):
             src = img.get("data-src") or img.get("src") or ""
-            if "autocerto.com/fotos/" in src and src not in image_urls:
-                image_urls.append(src)
+            if "autocerto.com/fotos/" in src and src not in urls_imagem:
+                urls_imagem.append(src)
 
-        images = [
-            {"image_url": u, "is_cover": i == 0, "sort_order": i}
-            for i, u in enumerate(image_urls)
+        imagens = [
+            {"url_imagem": u, "eh_capa": i == 0, "ordem": i}
+            for i, u in enumerate(urls_imagem)
         ]
 
-        vehicle = {
-            "external_id": external_id,
+        veiculo = {
+            "id_externo": id_externo,
             "slug": slug,
-            "code": None,
-            "brand": brand,
-            "model": model,
-            "version": version,
-            "year": year,
-            "price": price,
-            "mileage": mileage,
+            "codigo": None,
+            "marca": marca,
+            "modelo": modelo,
+            "versao": versao,
+            "ano": ano,
+            "preco": preco,
+            "quilometragem": quilometragem,
             "status": "Disponivel",
-            "publication_status": "Publicado",
-            "body": None,
-            "transmission": transmission,
-            "fuel": fuel,
-            "color": None,
-            "spec": None,
-            "overview": overview,
-            "highlights": highlights,
-            "cover_image_url": image_urls[0] if image_urls else None,
+            "status_publicacao": "Publicado",
+            "carroceria": None,
+            "cambio": cambio,
+            "combustivel": combustivel,
+            "cor": None,
+            "especificacao": None,
+            "descricao": descricao,
+            "destaques": destaques,
+            "url_imagem_capa": urls_imagem[0] if urls_imagem else None,
         }
-        return vehicle, images
+        return veiculo, imagens
 
-    # ── Interface pública (VehicleSourceConnector) ─────────────────────────────
+    # ── Interface pública (ConectorFonteVeiculos) ─────────────────────────────
 
-    def fetch_vehicles(self) -> list[dict]:
-        vehicles: list[dict] = []
+    def buscar_veiculos(self) -> list[dict]:
+        veiculos: list[dict] = []
         with httpx.Client(headers={"User-Agent": "Mozilla/5.0 (compatible; CarIA-sync/1.0)"}) as client:
-            detail_urls, listing_soup = self._collect_detail_urls(client)
+            urls_detalhe, listing_soup = self._coletar_urls_detalhe(client)
             if listing_soup is not None:
-                self._discover_brands(listing_soup)
+                self._descobrir_marcas(listing_soup)
 
             # Sequencial de propósito: é um job em lote (nunca no caminho de uma requisição
             # HTTP do bot), e ~50 páginas não justifica a complexidade de paralelismo — dá
-            # pra paralelizar depois (como _download_all_images já faz) se o estoque crescer
+            # pra paralelizar depois (como _baixar_todas_imagens já faz) se o estoque crescer
             # muito além disso.
-            for url in detail_urls:
+            for url in urls_detalhe:
                 resp = client.get(url, timeout=self.timeout)
                 resp.raise_for_status()
-                vehicle, images = self._parse_detail_page(resp.text, url)
-                self._images_cache[vehicle["external_id"]] = images
-                vehicles.append(vehicle)
+                veiculo, imagens = self._analisar_pagina_detalhe(resp.text, url)
+                self._cache_imagens[veiculo["id_externo"]] = imagens
+                veiculos.append(veiculo)
 
-        return vehicles
+        return veiculos
 
-    def fetch_images(self, external_ids: list[str]) -> dict[str, list[dict]]:
-        """Requer que fetch_vehicles() já tenha rodado nessa mesma instância — é sempre o
+    def buscar_imagens(self, ids_externos: list[str]) -> dict[str, list[dict]]:
+        """Requer que buscar_veiculos() já tenha rodado nessa mesma instância — é sempre o
         caso no fluxo de sync_inventory.py, que cria um conector novo e chama os dois
         métodos em sequência. Chamar isso isoladamente numa instância nova retorna vazio
         em vez de quebrar."""
-        result: dict[str, list[dict]] = defaultdict(list)
-        for eid in external_ids:
-            result[eid] = self._images_cache.get(eid, [])
-        return dict(result)
+        resultado: dict[str, list[dict]] = defaultdict(list)
+        for id_externo in ids_externos:
+            resultado[id_externo] = self._cache_imagens.get(id_externo, [])
+        return dict(resultado)
 
-    def download_image(self, image_url: str, dest_path, width: int = 1000, height: int = 750, quality: int = 78) -> bool:
+    def baixar_imagem(self, url_imagem: str, caminho_destino, width: int = 1000, height: int = 750, quality: int = 78) -> bool:
         """AutoCerto não tem endpoint de transform de imagem (diferente do Supabase
         Storage) — baixa o JPEG original e redimensiona/converte pra WebP no cliente."""
         try:
-            resp = httpx.get(image_url, timeout=self.timeout)
+            resp = httpx.get(url_imagem, timeout=self.timeout)
             resp.raise_for_status()
-            resize_and_save_webp(resp.content, dest_path, width, height, quality)
+            redimensionar_e_salvar_webp(resp.content, caminho_destino, width, height, quality)
             return True
         except (httpx.HTTPError, OSError):
             return False

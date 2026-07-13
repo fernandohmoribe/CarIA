@@ -7,7 +7,7 @@
 <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mt-4 mb-6">
     <div>
         <h1 class="text-2xl font-semibold text-zinc-100">{{ lead.nome or "Sem nome" }}</h1>
-        <p class="text-zinc-500 text-sm mt-1">{{ lead.telefone or lead.phone_number }}</p>
+        <p class="text-zinc-500 text-sm mt-1">{{ lead.telefone or lead.numero_telefone }}</p>
         {% if lead.email %}<p class="text-zinc-500 text-sm">{{ lead.email }}</p>{% endif %}
     </div>
     <div class="flex items-center gap-2 flex-wrap">
@@ -78,7 +78,7 @@
         <li class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-4 {{ 'border-t border-zinc-900 pt-3' if not loop.first else '' }}">
             <div>
                 <span class="text-zinc-200">{{ status_labels.get(h.status_anterior, h.status_anterior or "—") }} → {{ status_labels.get(h.status_novo, h.status_novo) }}</span>
-                <span class="text-zinc-500 text-xs ml-2">por {{ h.user.nome or h.user.username if h.user else "—" }}</span>
+                <span class="text-zinc-500 text-xs ml-2">por {{ h.usuario.nome or h.usuario.nome_usuario if h.usuario else "—" }}</span>
                 {% if h.observacao %}<p class="text-zinc-400 text-xs mt-1">{{ h.observacao }}</p>{% endif %}
             </div>
             <span class="text-zinc-500 text-xs sm:whitespace-nowrap">{{ h.data | local_time("%d/%m/%Y %H:%M") }}</span>
@@ -94,7 +94,7 @@
 <div class="space-y-6">
     {% for conv in conversas %}
     <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-5">
-        <div class="text-xs text-zinc-500 mb-3">Sessão {{ conv.created_at | local_time("%d/%m/%Y %H:%M") }} — status: {{ conv.status }}</div>
+        <div class="text-xs text-zinc-500 mb-3">Sessão {{ conv.criado_em | local_time("%d/%m/%Y %H:%M") }} — status: {{ conv.status }}</div>
         <div class="space-y-3">
             {% for msg in conv.mensagens %}
             <div class="flex {{ 'justify-end' if msg.role == 'user' else 'justify-start' }}">

@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import mimetypes
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -15,20 +16,21 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 import rate_limit as _rate_limit
-from claude_agent import get_ai_response
+from claude_agent import obter_resposta_ia
 from database import (
-    CLOSED_LEAD_STATUSES,
-    SILENCED_LEAD_STATUSES,
+    STATUS_LEAD_FECHADOS,
+    STATUS_LEAD_SILENCIADOS,
     SessionLocal,
-    close_conversation,
-    create_lead_after_closure,
-    get_conversation,
-    get_conversation_updated_at,
-    get_default_dealership,
-    get_latest_lead,
-    get_latest_lead_status,
-    lead_to_dict,
-    save_conversation,
+    agora_utc,
+    criar_lead_apos_encerramento,
+    encerrar_conversa,
+    lead_para_dict,
+    obter_conversa,
+    obter_conversa_atualizada_em,
+    obter_lead_mais_recente,
+    obter_loja_padrao,
+    obter_status_lead_mais_recente,
+    salvar_conversa,
 )
 from dealership_config import (
     DEALERSHIP_NAME,
@@ -38,7 +40,7 @@ from dealership_config import (
     WAHA_API_KEY,
     WAHA_BASE_URL,
     WAHA_SESSION,
-    check_faq,
+    verificar_faq,
 )
 
 load_dotenv()
@@ -60,6 +62,10 @@ if not SESSION_SECRET_KEY:
         "público (visível no código-fonte), permitindo forjar login."
     )
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY)
+
+# O módulo mimetypes do Python não conhece .webp por padrão nesse ambiente (serve como
+# text/plain) — registra explicitamente pra StaticFiles servir o content-type certo.
+mimetypes.add_type("image/webp", ".webp")
 
 MEDIA_ROOT = Path(__file__).parent / "media"
 os.makedirs("media", exist_ok=True)
@@ -84,89 +90,89 @@ CONVERSATION_EXPIRY_HOURS = 24
 
 RESET_COMMANDS = {"reiniciar", "recomeçar", "cancelar", "/start", "reset", "começar"}
 
-CLOSED_LEAD_MESSAGE = (
+MENSAGEM_LEAD_FECHADO = (
     "Esse atendimento já foi concluído com nosso time 😊 Vou avisar um vendedor que você "
     "entrou em contato de novo — ele já vai te retornar!"
 )
 
-def is_rate_limited(phone: str) -> bool:
-    limited = _rate_limit.is_rate_limited(phone, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, RATE_LIMIT_BLOCK)
-    if limited:
-        logger.warning(f"[ABUSO] {phone} bloqueado por {RATE_LIMIT_BLOCK}s (rate limit)")
-    return limited
+def _telefone_esta_limitado(telefone: str) -> bool:
+    limitado = _rate_limit.esta_limitado_por_taxa(telefone, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, RATE_LIMIT_BLOCK)
+    if limitado:
+        logger.warning(f"[ABUSO] {telefone} bloqueado por {RATE_LIMIT_BLOCK}s (rate limit)")
+    return limitado
 
 
 # ---------------------------------------------------------------------------
 # WAHA helpers
 # ---------------------------------------------------------------------------
 
-def to_chat_id(phone: str) -> str:
-    if "@" in phone:
-        return phone
-    return f"{phone}@c.us"
+def para_chat_id(telefone: str) -> str:
+    if "@" in telefone:
+        return telefone
+    return f"{telefone}@c.us"
 
 
 WAHA_HEADERS = {"X-Api-Key": WAHA_API_KEY} if WAHA_API_KEY else {}
 
 
-async def send_message(phone: str, text: str) -> None:
+async def enviar_mensagem(telefone: str, texto: str) -> None:
     url = f"{WAHA_BASE_URL}/api/sendText"
-    payload = {"chatId": to_chat_id(phone), "text": text, "session": WAHA_SESSION}
+    payload = {"chatId": para_chat_id(telefone), "text": texto, "session": WAHA_SESSION}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(url, json=payload, headers=WAHA_HEADERS)
         resp.raise_for_status()
 
 
-async def set_typing(phone: str) -> None:
+async def definir_digitando(telefone: str) -> None:
     url = f"{WAHA_BASE_URL}/api/startTyping"
     async with httpx.AsyncClient(timeout=10) as client:
         try:
-            await client.post(url, json={"chatId": to_chat_id(phone), "session": WAHA_SESSION}, headers=WAHA_HEADERS)
+            await client.post(url, json={"chatId": para_chat_id(telefone), "session": WAHA_SESSION}, headers=WAHA_HEADERS)
         except Exception:
             pass
 
 
-def _build_image_file(foto: dict) -> dict | None:
+def _montar_arquivo_imagem(foto: dict) -> dict | None:
     """Monta o payload `file` do WAHA a partir do arquivo local em media/ (preferencial,
     já otimizado em .webp) ou, se ainda não foi baixado, da URL remota como fallback."""
-    local_path = foto.get("local_path")
-    if local_path:
-        full_path = MEDIA_ROOT / local_path
-        if full_path.is_file():
-            data = base64.b64encode(full_path.read_bytes()).decode("ascii")
-            return {"mimetype": "image/webp", "filename": full_path.name, "data": data}
+    caminho_local = foto.get("caminho_local")
+    if caminho_local:
+        caminho_completo = MEDIA_ROOT / caminho_local
+        if caminho_completo.is_file():
+            data = base64.b64encode(caminho_completo.read_bytes()).decode("ascii")
+            return {"mimetype": "image/webp", "filename": caminho_completo.name, "data": data}
     url = foto.get("url")
     if url:
         return {"mimetype": "image/jpeg", "filename": "foto.jpg", "url": url}
     return None
 
 
-async def send_vehicle_photos(phone: str, photos: dict) -> None:
+async def enviar_fotos_veiculo(telefone: str, fotos: dict) -> None:
     url = f"{WAHA_BASE_URL}/api/sendImage"
-    veiculo = photos.get("veiculo") or ""
+    veiculo = fotos.get("veiculo") or ""
     async with httpx.AsyncClient(timeout=30) as client:
-        for i, foto in enumerate(photos.get("fotos", [])):
-            file_payload = _build_image_file(foto)
-            if not file_payload:
+        for i, foto in enumerate(fotos.get("fotos", [])):
+            payload_arquivo = _montar_arquivo_imagem(foto)
+            if not payload_arquivo:
                 continue
-            payload = {"chatId": to_chat_id(phone), "session": WAHA_SESSION, "file": file_payload}
+            payload = {"chatId": para_chat_id(telefone), "session": WAHA_SESSION, "file": payload_arquivo}
             if i == 0 and veiculo:
                 payload["caption"] = f"📸 {veiculo}"
             try:
                 resp = await client.post(url, json=payload, headers=WAHA_HEADERS)
                 resp.raise_for_status()
             except Exception as e:
-                logger.warning(f"Falha ao enviar foto {i + 1} pra {phone}: {e}")
+                logger.warning(f"Falha ao enviar foto {i + 1} pra {telefone}: {e}")
 
 
-async def notify_staff(lead: dict, phone: str) -> None:
+async def notificar_equipe(lead: dict, telefone: str) -> None:
     if not DEALERSHIP_STAFF_PHONE:
         return
 
     prioridade_emoji = "🔥 LEAD QUENTE" if lead.get("prioridade") == "quente" else "🔔 Novo lead"
     linhas = [f"{prioridade_emoji} — {DEALERSHIP_NAME}", ""]
     linhas.append(f"👤 Nome: {lead.get('nome') or '—'}")
-    linhas.append(f"📱 WhatsApp: {phone}")
+    linhas.append(f"📱 WhatsApp: {telefone}")
     linhas.append(f"📞 Telefone: {lead.get('telefone') or '—'}")
     linhas.append(f"✉️ Email: {lead.get('email') or '—'}")
     if lead.get("veiculo_interesse"):
@@ -191,87 +197,87 @@ async def notify_staff(lead: dict, phone: str) -> None:
     linhas.append("Ver leads: http://localhost:3000/admin/leads")
 
     try:
-        await send_message(DEALERSHIP_STAFF_PHONE, "\n".join(linhas))
+        await enviar_mensagem(DEALERSHIP_STAFF_PHONE, "\n".join(linhas))
     except Exception as e:
         logger.warning(f"Não foi possível notificar o vendedor: {e}")
 
 
-async def handle_closed_lead_contact(phone: str, dealership_id: int, previous_status: str) -> None:
-    """Cliente cujo lead mais recente está fechado (ver CLOSED_LEAD_STATUSES) mandou mensagem
+async def processar_contato_lead_fechado(telefone: str, loja_id: int, status_anterior: str) -> None:
+    """Cliente cujo lead mais recente está fechado (ver STATUS_LEAD_FECHADOS) mandou mensagem
     de novo. O bot não reengaja sozinho — manda só uma cortesia e cria um lead novo pra um vendedor
     revisar manualmente. Da mensagem seguinte em diante, o bot já responde normal nesse lead novo."""
     db = SessionLocal()
     try:
-        lead = create_lead_after_closure(db, dealership_id, phone, previous_status)
-        lead_dict = lead_to_dict(lead)
+        lead = criar_lead_apos_encerramento(db, loja_id, telefone, status_anterior)
+        dict_lead = lead_para_dict(lead)
     finally:
         db.close()
 
-    logger.info(f"[REENGAJAMENTO] {phone} voltou após lead {previous_status} — novo lead #{lead.id}")
-    await send_message(phone, CLOSED_LEAD_MESSAGE)
-    await notify_staff(lead_dict, phone)
+    logger.info(f"[REENGAJAMENTO] {telefone} voltou após lead {status_anterior} — novo lead #{lead.id}")
+    await enviar_mensagem(telefone, MENSAGEM_LEAD_FECHADO)
+    await notificar_equipe(dict_lead, telefone)
 
 
 # ---------------------------------------------------------------------------
-# Core message processing
+# Processamento principal de mensagem
 # ---------------------------------------------------------------------------
 
-def _sync_process(phone: str, text: str, push_name: str):
+def _processar_sincrono(telefone: str, texto: str, nome_exibicao: str):
     db = SessionLocal()
     try:
-        updated_at = get_conversation_updated_at(db, phone)
-        if updated_at:
-            cutoff = datetime.utcnow() - timedelta(hours=CONVERSATION_EXPIRY_HOURS)
-            if updated_at < cutoff:
-                close_conversation(db, phone, "expired")
-                logger.info(f"[EXPIRY] sessão de {phone} encerrada por inatividade ({CONVERSATION_EXPIRY_HOURS}h)")
+        atualizado_em = obter_conversa_atualizada_em(db, telefone)
+        if atualizado_em:
+            limite = agora_utc() - timedelta(hours=CONVERSATION_EXPIRY_HOURS)
+            if atualizado_em < limite:
+                encerrar_conversa(db, telefone, "expirada")
+                logger.info(f"[EXPIRY] sessão de {telefone} encerrada por inatividade ({CONVERSATION_EXPIRY_HOURS}h)")
 
-        history = get_conversation(db, phone)
+        historico = obter_conversa(db, telefone)
 
-        if len(history) >= MAX_TURNS * 2:
-            logger.info(f"[LIMITE] {phone} atingiu {MAX_TURNS} turnos")
+        if len(historico) >= MAX_TURNS * 2:
+            logger.info(f"[LIMITE] {telefone} atingiu {MAX_TURNS} turnos")
             return "Sua sessão expirou. Envie *reiniciar* para começar novamente.", None, None
 
-        ai_text, lead_to_notify, photos_to_send = get_ai_response(
-            messages=history,
-            user_message=text,
-            phone=phone,
-            push_name=push_name,
+        texto_ia, lead_para_notificar, fotos_para_enviar = obter_resposta_ia(
+            mensagens=historico,
+            mensagem_usuario=texto,
+            telefone=telefone,
+            nome_exibicao=nome_exibicao,
         )
 
-        history.append({"role": "user", "content": text})
-        history.append({"role": "assistant", "content": ai_text})
-        if len(history) > 20:
-            history = history[-20:]
+        historico.append({"role": "user", "content": texto})
+        historico.append({"role": "assistant", "content": texto_ia})
+        if len(historico) > 20:
+            historico = historico[-20:]
 
-        # busca de novo (não reusa o lead_to_notify, que só vem preenchido quando notifica) —
+        # busca de novo (não reusa o lead_para_notificar, que só vem preenchido quando notifica) —
         # pega o lead mais recente pra marcar a conversa, mesmo que a IA não tenha notificado nada.
-        dealership = get_default_dealership(db)
-        lead = get_latest_lead(db, dealership.id, phone) if dealership else None
-        save_conversation(db, phone, history, lead_id=lead.id if lead else None)
+        loja = obter_loja_padrao(db)
+        lead = obter_lead_mais_recente(db, loja.id, telefone) if loja else None
+        salvar_conversa(db, telefone, historico, lead_id=lead.id if lead else None)
 
-        return ai_text, lead_to_notify, photos_to_send
+        return texto_ia, lead_para_notificar, fotos_para_enviar
     finally:
         db.close()
 
 
-async def process_message(phone: str, text: str, push_name: str) -> None:
-    await set_typing(phone)
+async def processar_mensagem(telefone: str, texto: str, nome_exibicao: str) -> None:
+    await definir_digitando(telefone)
     try:
         # asyncio.to_thread só existe a partir do Python 3.9 — este ambiente roda 3.8.
         loop = asyncio.get_event_loop()
-        ai_text, lead_to_notify, photos_to_send = await loop.run_in_executor(
-            None, _sync_process, phone, text, push_name
+        texto_ia, lead_para_notificar, fotos_para_enviar = await loop.run_in_executor(
+            None, _processar_sincrono, telefone, texto, nome_exibicao
         )
-        await send_message(phone, ai_text)
-        if photos_to_send:
-            await send_vehicle_photos(phone, photos_to_send)
-        if lead_to_notify:
-            await notify_staff(lead_to_notify, phone)
+        await enviar_mensagem(telefone, texto_ia)
+        if fotos_para_enviar:
+            await enviar_fotos_veiculo(telefone, fotos_para_enviar)
+        if lead_para_notificar:
+            await notificar_equipe(lead_para_notificar, telefone)
     except Exception as exc:
-        logger.error(f"Erro ao processar mensagem de {phone}: {exc}", exc_info=True)
+        logger.error(f"Erro ao processar mensagem de {telefone}: {exc}", exc_info=True)
         try:
-            await send_message(phone, "Desculpe, tive um problema técnico. Pode tentar novamente em instantes? 🙏")
+            await enviar_mensagem(telefone, "Desculpe, tive um problema técnico. Pode tentar novamente em instantes? 🙏")
         except Exception:
             pass
 
@@ -296,76 +302,76 @@ async def webhook(request: Request):
     if payload.get("fromMe", False):
         return JSONResponse({"status": "ok"})
 
-    from_jid = payload.get("from", "")
-    if not (from_jid.endswith("@c.us") or from_jid.endswith("@lid")):
+    remetente_jid = payload.get("from", "")
+    if not (remetente_jid.endswith("@c.us") or remetente_jid.endswith("@lid")):
         return JSONResponse({"status": "ok"})
 
-    phone = from_jid
-    phone_num = from_jid.split("@")[0]
-    if TEST_PHONES and phone_num not in TEST_PHONES and from_jid not in TEST_PHONES:
+    telefone = remetente_jid
+    numero_telefone = remetente_jid.split("@")[0]
+    if TEST_PHONES and numero_telefone not in TEST_PHONES and remetente_jid not in TEST_PHONES:
         return JSONResponse({"status": "ok"})
 
-    if is_rate_limited(phone):
+    if _telefone_esta_limitado(telefone):
         return JSONResponse({"status": "ok"})
 
-    has_media = payload.get("hasMedia", False)
-    text = payload.get("body", "").strip()
+    tem_midia = payload.get("hasMedia", False)
+    texto = payload.get("body", "").strip()
 
-    if has_media and not text:
-        asyncio.create_task(send_message(phone, "Olá! 😊 Só consigo processar mensagens de texto. Por favor, escreva sua mensagem!"))
+    if tem_midia and not texto:
+        asyncio.create_task(enviar_mensagem(telefone, "Olá! 😊 Só consigo processar mensagens de texto. Por favor, escreva sua mensagem!"))
         return JSONResponse({"status": "ok"})
 
-    if not text:
+    if not texto:
         return JSONResponse({"status": "ok"})
 
-    if len(text) > MAX_MESSAGE_LENGTH:
+    if len(texto) > MAX_MESSAGE_LENGTH:
         return JSONResponse({"status": "ok"})
 
-    push_name = payload.get("_data", {}).get("notifyName", "") or phone
+    nome_exibicao = payload.get("_data", {}).get("notifyName", "") or telefone
 
     db = SessionLocal()
     try:
-        dealership = get_default_dealership(db)
-        dealership_id = dealership.id if dealership else None
-        lead_status = get_latest_lead_status(db, dealership_id, phone) if dealership_id else None
+        loja = obter_loja_padrao(db)
+        loja_id = loja.id if loja else None
+        status_lead = obter_status_lead_mais_recente(db, loja_id, telefone) if loja_id else None
     finally:
         db.close()
 
-    if lead_status in SILENCED_LEAD_STATUSES:
-        if lead_status in CLOSED_LEAD_STATUSES:
-            asyncio.create_task(handle_closed_lead_contact(phone, dealership_id, lead_status))
+    if status_lead in STATUS_LEAD_SILENCIADOS:
+        if status_lead in STATUS_LEAD_FECHADOS:
+            asyncio.create_task(processar_contato_lead_fechado(telefone, loja_id, status_lead))
         else:
             # transferido: já avisou "vou chamar um vendedor" — fica quieto, mesmo atendimento,
             # sem cortesia repetida nem lead novo, só esperando um humano assumir.
-            logger.info(f"[SILENCIADO] {phone} — lead transferido, aguardando vendedor assumir")
+            logger.info(f"[SILENCIADO] {telefone} — lead transferido, aguardando vendedor assumir")
         return JSONResponse({"status": "ok"})
 
-    if text.lower().strip() in RESET_COMMANDS:
+    if texto.lower().strip() in RESET_COMMANDS:
         db = SessionLocal()
         try:
-            close_conversation(db, phone, "reset")
+            encerrar_conversa(db, telefone, "reiniciada")
         finally:
             db.close()
-        nome = f", {push_name}" if push_name and push_name != phone else ""
-        asyncio.create_task(send_message(phone, f"Conversa reiniciada! 😊 Como posso te ajudar{nome}?"))
-        logger.info(f"[RESET] histórico de {phone} limpo")
+        nome = f", {nome_exibicao}" if nome_exibicao and nome_exibicao != telefone else ""
+        asyncio.create_task(enviar_mensagem(telefone, f"Conversa reiniciada! 😊 Como posso te ajudar{nome}?"))
+        logger.info(f"[RESET] histórico de {telefone} limpo")
         return JSONResponse({"status": "ok"})
 
-    logger.info(f"← {phone} ({push_name}): {text[:80]}")
+    logger.info(f"← {telefone} ({nome_exibicao}): {texto[:80]}")
 
     db = SessionLocal()
     try:
-        has_history = bool(get_conversation(db, phone))
+        tem_historico = bool(obter_conversa(db, telefone))
     finally:
         db.close()
 
-    faq_answer = check_faq(text, has_history=has_history)
-    if faq_answer:
-        logger.info(f"[FAQ] {phone}: respondido sem Claude")
-        asyncio.create_task(send_message(phone, faq_answer))
+    resposta_faq = verificar_faq(texto, tem_historico=tem_historico)
+    if resposta_faq:
+        logger.info(f"[FAQ] {telefone}: respondido sem Claude")
+        asyncio.create_task(enviar_mensagem(telefone, resposta_faq))
         return JSONResponse({"status": "ok"})
 
-    asyncio.create_task(process_message(phone, text, push_name))
+    asyncio.create_task(processar_mensagem(telefone, texto, nome_exibicao))
     return JSONResponse({"status": "ok"})
 
 
@@ -380,5 +386,5 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 3000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True, reload_includes=["*.py", "*.env"])
+    porta = int(os.getenv("PORT", 3000))
+    uvicorn.run("main:app", host="0.0.0.0", port=porta, reload=True, reload_includes=["*.py", "*.env"])

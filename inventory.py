@@ -7,7 +7,7 @@ de origem em tempo real. O banco local é mantido pelo sync_inventory.py.
 
 import re
 
-from database import SessionLocal, Vehicle, get_public_vehicle_by_slug
+from database import SessionLocal, Veiculo, obter_veiculo_publico_por_slug
 
 TOOLS = [
     {
@@ -71,33 +71,33 @@ TOOLS = [
 ]
 
 
-def _summary(v: Vehicle) -> dict:
+def _resumo(v: Veiculo) -> dict:
     return {
         "slug": v.slug,
-        "marca": v.brand,
-        "modelo": v.model,
-        "versao": v.version,
-        "ano": v.year,
-        "preco": v.price,
-        "km": v.mileage,
-        "carroceria": v.body,
-        "cambio": v.transmission,
-        "combustivel": v.fuel,
-        "cor": v.color,
+        "marca": v.marca,
+        "modelo": v.modelo,
+        "versao": v.versao,
+        "ano": v.ano,
+        "preco": v.preco,
+        "km": v.quilometragem,
+        "carroceria": v.carroceria,
+        "cambio": v.cambio,
+        "combustivel": v.combustivel,
+        "cor": v.cor,
         # string de URL solta — NUNCA vira bloco de imagem/base64 pra API (custo de visão).
         # A IA só sabe que existe uma foto de capa, não "vê" ela. Fotos de verdade vão pela
         # tool enviar_fotos_veiculo (ver CLAUDE.md).
-        "foto_capa": v.cover_image_url,
+        "foto_capa": v.url_imagem_capa,
     }
 
 
-def _detail(v: Vehicle) -> dict:
-    data = _summary(v)
+def _detalhe(v: Veiculo) -> dict:
+    data = _resumo(v)
     data.update(
         {
-            "spec": v.spec,
-            "overview": v.overview,
-            "destaques": v.highlights(),
+            "especificacao": v.especificacao,
+            "descricao": v.descricao,
+            "destaques": v.destaques(),
             "cidade": v.cidade,
             "final_placa": v.final_placa,
             "blindado": v.blindado,
@@ -113,7 +113,7 @@ def _detail(v: Vehicle) -> dict:
 
 
 def buscar_veiculos(
-    dealership_id: int,
+    loja_id: int,
     termo: str = None,
     marca: str = None,
     preco_min: float = None,
@@ -127,70 +127,70 @@ def buscar_veiculos(
 
     db = SessionLocal()
     try:
-        q = db.query(Vehicle).filter(
-            Vehicle.dealership_id == dealership_id,
-            Vehicle.status == "Disponivel",
-            Vehicle.publication_status == "Publicado",
+        q = db.query(Veiculo).filter(
+            Veiculo.loja_id == loja_id,
+            Veiculo.status == "Disponivel",
+            Veiculo.status_publicacao == "Publicado",
         )
         if termo:
             # Separa em qualquer caractere não-alfanumérico, não só espaço — "Mercedes-Benz"
-            # (hífen) precisa virar ["Mercedes", "Benz"], senão não bate com o brand "Mercedes
-            # Benz" (espaço) cadastrado no banco e o AND entre palavras zera o resultado.
+            # (hífen) precisa virar ["Mercedes", "Benz"], senão não bate com a marca "Mercedes
+            # Benz" (espaço) cadastrada no banco e o AND entre palavras zera o resultado.
             palavras = [p for p in re.split(r"\W+", termo) if p]
             for palavra in palavras:
                 like = f"%{palavra}%"
                 q = q.filter(
                     or_(
-                        Vehicle.brand.ilike(like),
-                        Vehicle.model.ilike(like),
-                        Vehicle.version.ilike(like),
+                        Veiculo.marca.ilike(like),
+                        Veiculo.modelo.ilike(like),
+                        Veiculo.versao.ilike(like),
                     )
                 )
         if marca:
-            q = q.filter(Vehicle.brand.ilike(f"%{marca}%"))
+            q = q.filter(Veiculo.marca.ilike(f"%{marca}%"))
         if preco_min is not None:
-            q = q.filter(Vehicle.price >= preco_min)
+            q = q.filter(Veiculo.preco >= preco_min)
         if preco_max is not None:
-            q = q.filter(Vehicle.price <= preco_max)
+            q = q.filter(Veiculo.preco <= preco_max)
         if carroceria:
-            q = q.filter(Vehicle.body.ilike(f"%{carroceria}%"))
+            q = q.filter(Veiculo.carroceria.ilike(f"%{carroceria}%"))
         if cambio:
-            q = q.filter(Vehicle.transmission.ilike(f"%{cambio}%"))
+            q = q.filter(Veiculo.cambio.ilike(f"%{cambio}%"))
         if combustivel:
-            q = q.filter(Vehicle.fuel.ilike(f"%{combustivel}%"))
+            q = q.filter(Veiculo.combustivel.ilike(f"%{combustivel}%"))
 
-        vehicles = q.order_by(Vehicle.price.asc()).limit(limit).all()
-        if not vehicles:
+        veiculos = q.order_by(Veiculo.preco.asc()).limit(limit).all()
+        if not veiculos:
             return {"resultado": "Nenhum veículo encontrado no nosso estoque com esses filtros."}
-        return [_summary(v) for v in vehicles]
+        return [_resumo(v) for v in veiculos]
     finally:
         db.close()
 
 
-def detalhes_veiculo(dealership_id: int, slug: str) -> dict:
+def detalhes_veiculo(loja_id: int, slug: str) -> dict:
     db = SessionLocal()
     try:
-        vehicle = get_public_vehicle_by_slug(db, dealership_id, slug)
-        if not vehicle:
+        veiculo = obter_veiculo_publico_por_slug(db, loja_id, slug)
+        if not veiculo:
             return {"erro": "Veículo não encontrado na nossa base de dados."}
-        return _detail(vehicle)
+        return _detalhe(veiculo)
     finally:
         db.close()
 
 
-def listar_fotos_veiculo(dealership_id: int, slug: str) -> dict:
+def listar_fotos_veiculo(loja_id: int, slug: str) -> dict:
     """Retorna os arquivos de foto do veículo (caminho local em media/, com URL remota
     como fallback) pra envio real via WhatsApp — nunca pra exibir como link em texto."""
     db = SessionLocal()
     try:
-        vehicle = get_public_vehicle_by_slug(db, dealership_id, slug)
-        if not vehicle:
+        veiculo = obter_veiculo_publico_por_slug(db, loja_id, slug)
+        if not veiculo:
             return {"erro": "Veículo não encontrado na nossa base de dados.", "fotos": []}
-        if not vehicle.images:
+        if not veiculo.imagens:
             return {"erro": "Esse veículo não tem fotos cadastradas.", "fotos": []}
         return {
-            "veiculo": f"{vehicle.brand} {vehicle.model} {vehicle.version or ''}".strip(),
-            "fotos": [{"local_path": img.local_path, "url": img.image_url} for img in vehicle.images],
+            "veiculo": f"{veiculo.marca} {veiculo.modelo} {veiculo.versao or ''}".strip(),
+            "fotos": [{"caminho_local": img.caminho_local, "url": img.url_imagem} for img in veiculo.imagens],
         }
     finally:
         db.close()

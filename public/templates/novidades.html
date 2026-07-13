@@ -7,8 +7,8 @@
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
     {% for post in posts %}
     <a href="/novidades/{{ post.slug }}" class="block bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">
-        {% if post.imagem_local_path or post.imagem_url %}
-        <img src="{{ img_src(post.imagem_local_path, post.imagem_url, 800, 500) }}" loading="lazy"
+        {% if post.caminho_local_imagem or post.url_imagem %}
+        <img src="{{ imagem_src(post.caminho_local_imagem, post.url_imagem, 800, 500) }}" loading="lazy"
              class="w-full h-40 object-cover bg-zinc-100" alt="{{ post.titulo }}">
         {% endif %}
         <div class="p-4">

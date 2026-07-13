@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Painel{% endblock %}
 {% block content %}
 
-<h1 class="text-2xl font-semibold text-zinc-100 mb-1">Dashboard</h1>
-<p class="text-zinc-500 text-sm mb-8">{{ dealership.nome if dealership else "—" }}</p>
+<h1 class="text-2xl font-semibold text-zinc-100 mb-1">Painel</h1>
+<p class="text-zinc-500 text-sm mb-8">{{ loja.nome if loja else "—" }}</p>
 
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
     <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6">
@@ -12,7 +12,7 @@
     </div>
     <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6">
         <div class="text-zinc-500 text-xs uppercase tracking-wide mb-2">Veículos no estoque</div>
-        <div class="text-3xl font-semibold text-emerald-400">{{ total_vehicles }}</div>
+        <div class="text-3xl font-semibold text-emerald-400">{{ total_veiculos }}</div>
     </div>
     <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6">
         <div class="text-zinc-500 text-xs uppercase tracking-wide mb-2">Leads quentes 🔥</div>
@@ -66,7 +66,7 @@
                 <div class="text-sm text-zinc-200">{{ lead.nome or "Sem nome" }}</div>
                 <div class="text-xs text-zinc-500">{{ lead.veiculo_interesse or "—" }}</div>
             </div>
-            <span class="text-xs text-zinc-500">{{ lead.telefone or lead.phone_number }}</span>
+            <span class="text-xs text-zinc-500">{{ lead.telefone or lead.numero_telefone }}</span>
         </a>
         {% endfor %}
     </div>

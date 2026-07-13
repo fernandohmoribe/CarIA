@@ -5,21 +5,21 @@ import pytest
 
 from database import (
     SessionLocal,
-    get_default_dealership,
-    get_google_reviews,
-    get_or_create_dealership,
-    get_visible_instagram_posts,
+    obter_avaliacoes_google,
+    obter_loja_padrao,
+    obter_ou_criar_loja,
+    obter_posts_instagram_visiveis,
 )
 
 
-def _dealership_id():
+def _loja_id():
     db = SessionLocal()
-    dealership = get_default_dealership(db) or get_or_create_dealership(
-        db, nome="Loja Sync Externo", connector_type="supabase", connector_config={}
+    loja = obter_loja_padrao(db) or obter_ou_criar_loja(
+        db, nome="Loja Sync Externo", tipo_conector="supabase", config_conector={}
     )
-    dealership_id = dealership.id
+    loja_id = loja.id
     db.close()
-    return dealership_id
+    return loja_id
 
 
 # ── Instagram ────────────────────────────────────────────────────────────
@@ -29,11 +29,11 @@ def test_sync_instagram_noop_without_credentials(monkeypatch):
 
     import sync_instagram
 
-    assert sync_instagram.run_sync() == 0
+    assert sync_instagram.rodar_sincronizacao() == 0
 
 
 def test_sync_instagram_upserts_from_mocked_api(monkeypatch):
-    _dealership_id()
+    _loja_id()
     monkeypatch.setenv("INSTAGRAM_ACCESS_TOKEN", "fake-token")
     monkeypatch.setenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "fake-ig-user-id")
 
@@ -56,14 +56,14 @@ def test_sync_instagram_upserts_from_mocked_api(monkeypatch):
 
     import sync_instagram
 
-    total = sync_instagram.run_sync()
+    total = sync_instagram.rodar_sincronizacao()
     assert total == 1
 
     db = SessionLocal()
-    from database import get_all_instagram_posts
-    posts = get_all_instagram_posts(db, _dealership_id())
+    from database import obter_todos_posts_instagram
+    posts = obter_todos_posts_instagram(db, _loja_id())
     db.close()
-    match = [p for p in posts if p.media_id == "media-fixture-1"]
+    match = [p for p in posts if p.id_midia == "media-fixture-1"]
     assert len(match) == 1
     assert match[0].visivel is False  # precisa de curadoria manual antes de aparecer no site
 
@@ -75,11 +75,11 @@ def test_sync_google_reviews_noop_without_credentials(monkeypatch):
 
     import sync_google_reviews
 
-    assert sync_google_reviews.run_sync() == 0
+    assert sync_google_reviews.rodar_sincronizacao() == 0
 
 
 def test_sync_google_reviews_replaces_cache_from_mocked_api(monkeypatch):
-    dealership_id = _dealership_id()
+    loja_id = _loja_id()
     monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "fake-key")
     monkeypatch.setenv("GOOGLE_PLACE_ID", "fake-place-id")
 
@@ -103,20 +103,20 @@ def test_sync_google_reviews_replaces_cache_from_mocked_api(monkeypatch):
 
     import sync_google_reviews
 
-    total = sync_google_reviews.run_sync()
+    total = sync_google_reviews.rodar_sincronizacao()
     assert total == 1
 
     db = SessionLocal()
-    reviews = get_google_reviews(db, dealership_id)
+    avaliacoes = obter_avaliacoes_google(db, loja_id)
     db.close()
-    assert len(reviews) == 1
-    assert reviews[0].author_name == "Cliente Fixture"
+    assert len(avaliacoes) == 1
+    assert avaliacoes[0].nome_autor == "Cliente Fixture"
 
     # Roda de novo com uma lista vazia — precisa substituir o cache, não acumular.
     fake_response.json.return_value = {"result": {"reviews": []}}
-    sync_google_reviews.run_sync()
+    sync_google_reviews.rodar_sincronizacao()
 
     db = SessionLocal()
-    reviews = get_google_reviews(db, dealership_id)
+    avaliacoes = obter_avaliacoes_google(db, loja_id)
     db.close()
-    assert len(reviews) == 0
+    assert len(avaliacoes) == 0

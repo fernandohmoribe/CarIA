@@ -12,8 +12,8 @@ from pathlib import Path
 from PIL import Image
 
 
-def resize_and_save_webp(image_bytes: bytes, dest_path: Path, width: int = 1000, height: int = 750, quality: int = 78) -> None:
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+def redimensionar_e_salvar_webp(bytes_imagem: bytes, caminho_destino: Path, width: int = 1000, height: int = 750, quality: int = 78) -> None:
+    img = Image.open(io.BytesIO(bytes_imagem)).convert("RGB")
     img.thumbnail((width, height))
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(dest_path, format="WEBP", quality=quality)
+    caminho_destino.parent.mkdir(parents=True, exist_ok=True)
+    img.save(caminho_destino, format="WEBP", quality=quality)

@@ -7,38 +7,38 @@ instâncias), mas a lógica em si mora só aqui.
 from __future__ import annotations
 
 
-def transform_image_url(url: str, width: int, height: int, quality: int = 65) -> str:
+def transformar_url_imagem(url: str, width: int, height: int, quality: int = 65) -> str:
     """Usa a API de transformação de imagem do Supabase pra servir thumbnails leves."""
     marker = "/storage/v1/object/public/"
     idx = url.find(marker) if url else -1
     if idx == -1:
         return url
     base = url[:idx]
-    rest = url[idx + len(marker):]
-    return f"{base}/storage/v1/render/image/public/{rest}?width={width}&height={height}&resize=cover&quality={quality}"
+    resto = url[idx + len(marker):]
+    return f"{base}/storage/v1/render/image/public/{resto}?width={width}&height={height}&resize=cover&quality={quality}"
 
 
 def brl(value) -> str:
     if value is None:
         return "0,00"
-    formatted = f"{value:,.2f}"
-    return formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+    formatado = f"{value:,.2f}"
+    return formatado.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-_BLANK_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+_IMAGEM_EM_BRANCO = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
 
 
-def img_src(local_path: str, remote_url: str, width: int, height: int, quality: int = 65) -> str:
+def imagem_src(caminho_local: str, url_remota: str, width: int, height: int, quality: int = 65) -> str:
     """Prefere a foto já baixada em media/ — só cai pro Supabase se ainda não tiver sido baixada.
     Sem nenhuma das duas (ex: veículo cadastrado manualmente sem foto), devolve um GIF
     transparente 1x1 em vez de deixar `src="None"` ir pro HTML (link quebrado de verdade)."""
-    if local_path:
-        return f"/media/{local_path}"
-    if remote_url:
-        return transform_image_url(remote_url, width, height, quality)
-    return _BLANK_IMAGE
+    if caminho_local:
+        return f"/media/{caminho_local}"
+    if url_remota:
+        return transformar_url_imagem(url_remota, width, height, quality)
+    return _IMAGEM_EM_BRANCO
 
 
-def register(templates) -> None:
+def registrar(templates) -> None:
     templates.env.filters["brl"] = brl
-    templates.env.globals["img_src"] = img_src
+    templates.env.globals["imagem_src"] = imagem_src

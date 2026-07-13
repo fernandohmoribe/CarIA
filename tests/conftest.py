@@ -31,6 +31,6 @@ def _reset_rate_limiter():
     já que o TestClient sempre reporta o mesmo IP fake ("testclient")."""
     import rate_limit
 
-    rate_limit._timestamps.clear()
-    rate_limit._blocked.clear()
+    rate_limit._carimbos_tempo.clear()
+    rate_limit._bloqueados.clear()
     yield

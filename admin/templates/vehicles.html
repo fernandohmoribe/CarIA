@@ -5,13 +5,13 @@
 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
     <div>
         <h1 class="text-2xl font-semibold text-zinc-100">Veículos</h1>
-        <p class="text-zinc-500 text-sm mt-1">{{ vehicles|length }} veículo(s) disponível(is) — sincronizados do sistema da loja</p>
+        <p class="text-zinc-500 text-sm mt-1">{{ veiculos|length }} veículo(s) disponível(is) — sincronizados do sistema da loja</p>
     </div>
     <div class="flex gap-2 w-full sm:w-auto">
         <input id="search" type="text" placeholder="Buscar marca ou modelo..."
                class="bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm w-full sm:w-64 focus:outline-none focus:border-amber-450"
                onkeyup="filterVehicles(this.value)">
-        <a href="/admin/vehicles/novo"
+        <a href="/admin/veiculos/novo"
            class="shrink-0 bg-amber-450 text-black font-medium rounded-lg px-4 py-2 text-sm hover:brightness-110 transition whitespace-nowrap">
             + Cadastrar veículo
         </a>
@@ -19,39 +19,39 @@
 </div>
 
 <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-    {% for v in vehicles %}
-    <div class="vehicle-card bg-[#111113] border border-zinc-800 rounded-2xl overflow-hidden" data-search="{{ (v.brand ~ ' ' ~ v.model ~ ' ' ~ (v.version or ''))|lower }}">
-        {% set cover_src = img_src(v.cover_local_path, v.cover_image_url, 1000, 750) %}
-        <img id="main-{{ v.id }}" src="{{ cover_src }}" loading="lazy" class="w-full h-44 object-cover bg-zinc-900" alt="{{ v.brand }} {{ v.model }}">
-        {% if v.images|length > 1 %}
+    {% for v in veiculos %}
+    <div class="vehicle-card bg-[#111113] border border-zinc-800 rounded-2xl overflow-hidden" data-search="{{ (v.marca ~ ' ' ~ v.modelo ~ ' ' ~ (v.versao or ''))|lower }}">
+        {% set capa_src = imagem_src(v.caminho_capa, v.url_imagem_capa, 1000, 750) %}
+        <img id="main-{{ v.id }}" src="{{ capa_src }}" loading="lazy" class="w-full h-44 object-cover bg-zinc-900" alt="{{ v.marca }} {{ v.modelo }}">
+        {% if v.imagens|length > 1 %}
         <div class="flex gap-1 overflow-x-auto px-3 py-2 bg-black/30">
-            {% for img in v.images[:8] %}
-            <img src="{{ img_src(img.local_path, img.image_url, 1000, 750) }}" loading="lazy" class="w-12 h-9 object-cover rounded flex-shrink-0 opacity-70 hover:opacity-100 transition cursor-pointer"
+            {% for img in v.imagens[:8] %}
+            <img src="{{ imagem_src(img.caminho_local, img.url_imagem, 1000, 750) }}" loading="lazy" class="w-12 h-9 object-cover rounded flex-shrink-0 opacity-70 hover:opacity-100 transition cursor-pointer"
                  onclick="document.getElementById('main-{{ v.id }}').src = this.src">
             {% endfor %}
         </div>
         {% endif %}
         <div class="p-4">
-            <h3 class="font-semibold text-zinc-100">{{ v.brand }} {{ v.model }}</h3>
-            <p class="text-zinc-500 text-xs mb-2">{{ v.version or "" }}</p>
-            <p class="text-emerald-400 font-semibold">R$ {{ v.price|brl }}</p>
-            {% set meta = [v.transmission, v.fuel, v.color]|select|list %}
-            <p class="text-zinc-400 text-xs mt-1">{{ v.year }} · {{ "{:,}".format(v.mileage or 0).replace(",", ".") }} km{% if meta %} · {{ meta|join(" · ") }}{% endif %}</p>
-            {% if v.code %}<p class="text-zinc-600 text-xs mt-1">Código: {{ v.code }}</p>{% endif %}
+            <h3 class="font-semibold text-zinc-100">{{ v.marca }} {{ v.modelo }}</h3>
+            <p class="text-zinc-500 text-xs mb-2">{{ v.versao or "" }}</p>
+            <p class="text-emerald-400 font-semibold">R$ {{ v.preco|brl }}</p>
+            {% set meta = [v.cambio, v.combustivel, v.cor]|select|list %}
+            <p class="text-zinc-400 text-xs mt-1">{{ v.ano }} · {{ "{:,}".format(v.quilometragem or 0).replace(",", ".") }} km{% if meta %} · {{ meta|join(" · ") }}{% endif %}</p>
+            {% if v.codigo %}<p class="text-zinc-600 text-xs mt-1">Código: {{ v.codigo }}</p>{% endif %}
             {% set flags = [
                 ("Blindado", v.blindado), ("Aceita troca", v.aceita_troca), ("Único dono", v.unico_dono),
                 ("Revisões pela concessionária", v.revisoes_concessionaria), ("IPVA pago", v.ipva_pago),
                 ("Licenciado", v.licenciado), ("Garantia de fábrica", v.garantia_fabrica),
             ] %}
-            {% if v.overview or v.highlights() or flags|selectattr("1")|list %}
+            {% if v.descricao or v.destaques() or flags|selectattr("1")|list %}
             <details class="mt-3 text-xs text-zinc-400">
                 <summary class="cursor-pointer text-amber-450">Detalhes</summary>
-                {% if v.overview %}
-                <p class="mt-2 whitespace-pre-line leading-relaxed">{{ v.overview }}</p>
+                {% if v.descricao %}
+                <p class="mt-2 whitespace-pre-line leading-relaxed">{{ v.descricao }}</p>
                 {% endif %}
-                {% if v.highlights() %}
+                {% if v.destaques() %}
                 <ul class="mt-2 space-y-0.5">
-                    {% for h in v.highlights() %}
+                    {% for h in v.destaques() %}
                     <li>• {{ h }}</li>
                     {% endfor %}
                 </ul>
@@ -63,9 +63,9 @@
             </details>
             {% endif %}
             <div class="flex items-center gap-3 mt-3 pt-3 border-t border-zinc-800">
-                <a href="/admin/vehicles/{{ v.slug }}/editar" class="text-xs text-amber-450 hover:underline">Editar</a>
-                <form method="post" action="/admin/vehicles/{{ v.slug }}/excluir"
-                      onsubmit="return confirm('Excluir {{ v.brand }} {{ v.model }}? Essa ação não pode ser desfeita.');">
+                <a href="/admin/veiculos/{{ v.slug }}/editar" class="text-xs text-amber-450 hover:underline">Editar</a>
+                <form method="post" action="/admin/veiculos/{{ v.slug }}/excluir"
+                      onsubmit="return confirm('Excluir {{ v.marca }} {{ v.modelo }}? Essa ação não pode ser desfeita.');">
                     <button type="submit" class="text-xs text-red-400 hover:underline bg-transparent border-0 p-0 m-0 cursor-pointer appearance-none">Excluir</button>
                 </form>
             </div>

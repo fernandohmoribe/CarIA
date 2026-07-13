@@ -19,123 +19,122 @@ load_dotenv()
 
 from database import (
     SessionLocal,
-    Vehicle,
-    VehicleImage,
-    get_or_create_dealership,
-    replace_vehicle_images,
-    upsert_vehicle,
+    Veiculo,
+    ImagemVeiculo,
+    agora_utc,
+    obter_ou_criar_loja,
+    substituir_imagens_veiculo,
+    salvar_veiculo,
 )
-from connectors.autocerto_connector import AutoCertoVehicleConnector
-from connectors.base import VehicleSourceConnector
-from connectors.supabase_connector import SupabaseVehicleConnector
+from connectors.autocerto_connector import ConectorAutoCerto
+from connectors.base import ConectorFonteVeiculos
+from connectors.supabase_connector import ConectorSupabase
 
 MEDIA_ROOT = Path(__file__).parent / "media"
 MAX_DOWNLOAD_WORKERS = 8
 
 
-def build_connector(dealership) -> VehicleSourceConnector:
-    config = dealership.connector_config()
-    if dealership.connector_type == "supabase":
-        return SupabaseVehicleConnector(base_url=config["base_url"], anon_key=config["anon_key"])
-    elif dealership.connector_type == "autocerto":
-        return AutoCertoVehicleConnector(site_url=config["site_url"])
-    raise ValueError(f"connector_type não suportado: {dealership.connector_type}")
+def montar_conector(loja) -> ConectorFonteVeiculos:
+    config = loja.config_conector()
+    if loja.tipo_conector == "supabase":
+        return ConectorSupabase(base_url=config["base_url"], anon_key=config["anon_key"])
+    elif loja.tipo_conector == "autocerto":
+        return ConectorAutoCerto(site_url=config["site_url"])
+    raise ValueError(f"tipo_conector não suportado: {loja.tipo_conector}")
 
 
-def _download_all_images(db, connector, dealership_id: int) -> None:
+def _baixar_todas_imagens(db, conector, loja_id: int) -> None:
     """Baixa as fotos de todos os veículos da loja em paralelo pra media/.
 
     Idempotente — pula o que já existe em disco. As requisições de download
     rodam em threads (só I/O de rede); a sessão do banco só é usada na thread
     principal, antes e depois, pra não violar a não-thread-safety do SQLAlchemy.
     """
-    if not hasattr(connector, "download_image"):
+    if not hasattr(conector, "baixar_imagem"):
         return
 
-    vehicles = db.query(Vehicle).filter(Vehicle.dealership_id == dealership_id).all()
+    veiculos = db.query(Veiculo).filter(Veiculo.loja_id == loja_id).all()
 
-    pending = []  # (image_id, image_url, dest_path)
-    already_local = {}  # image_id -> rel_path
-    for vehicle in vehicles:
-        for img in vehicle.images:
-            rel_path = Path("vehicles") / vehicle.slug / f"{img.sort_order}.webp"
-            dest_path = MEDIA_ROOT / rel_path
-            if dest_path.exists():
-                already_local[img.id] = str(rel_path)
+    pendentes = []  # (imagem_id, url_imagem, caminho_destino)
+    ja_local = {}  # imagem_id -> caminho_relativo
+    for veiculo in veiculos:
+        for img in veiculo.imagens:
+            caminho_relativo = Path("vehicles") / veiculo.slug / f"{img.ordem}.webp"
+            caminho_destino = MEDIA_ROOT / caminho_relativo
+            if caminho_destino.exists():
+                ja_local[img.id] = str(caminho_relativo)
             else:
-                pending.append((img.id, img.image_url, dest_path, str(rel_path)))
+                pendentes.append((img.id, img.url_imagem, caminho_destino, str(caminho_relativo)))
 
-    for image_id, rel_path in already_local.items():
-        db.query(VehicleImage).filter(VehicleImage.id == image_id).update({"local_path": rel_path})
+    for imagem_id, caminho_relativo in ja_local.items():
+        db.query(ImagemVeiculo).filter(ImagemVeiculo.id == imagem_id).update({"caminho_local": caminho_relativo})
     db.commit()
 
-    if not pending:
+    if not pendentes:
         return
 
-    print(f"Baixando {len(pending)} foto(s) nova(s) em paralelo ({MAX_DOWNLOAD_WORKERS} de cada vez)...")
+    print(f"Baixando {len(pendentes)} foto(s) nova(s) em paralelo ({MAX_DOWNLOAD_WORKERS} de cada vez)...")
 
-    def _do_download(item):
-        image_id, image_url, dest_path, rel_path = item
-        ok = connector.download_image(image_url, dest_path)
-        return image_id, (rel_path if ok else None)
+    def _fazer_download(item):
+        imagem_id, url_imagem, caminho_destino, caminho_relativo = item
+        ok = conector.baixar_imagem(url_imagem, caminho_destino)
+        return imagem_id, (caminho_relativo if ok else None)
 
     with ThreadPoolExecutor(max_workers=MAX_DOWNLOAD_WORKERS) as pool:
-        futures = [pool.submit(_do_download, item) for item in pending]
-        done = 0
+        futures = [pool.submit(_fazer_download, item) for item in pendentes]
+        feitas = 0
         for future in as_completed(futures):
-            image_id, rel_path = future.result()
-            done += 1
-            if rel_path:
-                db.query(VehicleImage).filter(VehicleImage.id == image_id).update({"local_path": rel_path})
-            if done % 20 == 0 or done == len(pending):
-                print(f"  {done}/{len(pending)} processadas")
+            imagem_id, caminho_relativo = future.result()
+            feitas += 1
+            if caminho_relativo:
+                db.query(ImagemVeiculo).filter(ImagemVeiculo.id == imagem_id).update({"caminho_local": caminho_relativo})
+            if feitas % 20 == 0 or feitas == len(pendentes):
+                print(f"  {feitas}/{len(pendentes)} processadas")
 
     db.commit()
 
 
-def run_sync() -> int:
+def rodar_sincronizacao() -> int:
     db = SessionLocal()
     try:
-        connector_type = os.getenv("DEALERSHIP_CONNECTOR_TYPE", "supabase")
-        if connector_type == "supabase":
-            connector_config = {
+        tipo_conector = os.getenv("DEALERSHIP_CONNECTOR_TYPE", "supabase")
+        if tipo_conector == "supabase":
+            config_conector = {
                 "base_url": os.getenv("SUPABASE_URL", ""),
                 "anon_key": os.getenv("SUPABASE_ANON_KEY", ""),
             }
-        elif connector_type == "autocerto":
-            connector_config = {"site_url": os.getenv("AUTOCERTO_SITE_URL", "")}
+        elif tipo_conector == "autocerto":
+            config_conector = {"site_url": os.getenv("AUTOCERTO_SITE_URL", "")}
         else:
-            raise ValueError(f"DEALERSHIP_CONNECTOR_TYPE não suportado: {connector_type}")
+            raise ValueError(f"DEALERSHIP_CONNECTOR_TYPE não suportado: {tipo_conector}")
 
-        dealership = get_or_create_dealership(
+        loja = obter_ou_criar_loja(
             db,
             nome=os.getenv("DEALERSHIP_NAME", "Minha Loja"),
-            connector_type=connector_type,
-            connector_config=connector_config,
-            staff_phone=os.getenv("DEALERSHIP_STAFF_PHONE", ""),
+            tipo_conector=tipo_conector,
+            config_conector=config_conector,
+            telefone_equipe=os.getenv("DEALERSHIP_STAFF_PHONE", ""),
         )
 
-        connector = build_connector(dealership)
-        vehicles = connector.fetch_vehicles()
-        external_ids = [v["external_id"] for v in vehicles]
-        images_by_vehicle = connector.fetch_images(external_ids)
+        conector = montar_conector(loja)
+        veiculos = conector.buscar_veiculos()
+        ids_externos = [v["id_externo"] for v in veiculos]
+        imagens_por_veiculo = conector.buscar_imagens(ids_externos)
 
-        for data in vehicles:
-            vehicle = upsert_vehicle(db, dealership.id, data)
-            replace_vehicle_images(db, vehicle.id, images_by_vehicle.get(data["external_id"], []))
+        for data in veiculos:
+            veiculo = salvar_veiculo(db, loja.id, data)
+            substituir_imagens_veiculo(db, veiculo.id, imagens_por_veiculo.get(data["id_externo"], []))
 
-        _download_all_images(db, connector, dealership.id)
+        _baixar_todas_imagens(db, conector, loja.id)
 
-        from datetime import datetime
-
-        dealership.last_sync_at = datetime.utcnow()
+        loja.ultima_sincronizacao = agora_utc()
         db.commit()
 
-        return len(vehicles)
+        return len(veiculos)
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    total = run_sync()
+    total = rodar_sincronizacao()
     print(f"Sincronização concluída: {total} veículo(s) importado(s) para o banco local.")

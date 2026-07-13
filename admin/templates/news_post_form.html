@@ -24,8 +24,8 @@
     <div>
         <label class="block text-sm text-zinc-400 mb-1">Imagem</label>
         <input type="file" name="imagem" accept="image/*" class="w-full text-sm text-zinc-400">
-        {% if post and (post.imagem_local_path or post.imagem_url) %}
-        <img src="{{ img_src(post.imagem_local_path, post.imagem_url, 400, 250) }}" class="mt-2 h-24 rounded-lg object-cover">
+        {% if post and (post.caminho_local_imagem or post.url_imagem) %}
+        <img src="{{ imagem_src(post.caminho_local_imagem, post.url_imagem, 400, 250) }}" class="mt-2 h-24 rounded-lg object-cover">
         {% endif %}
     </div>
     <label class="flex items-center gap-2 text-sm text-zinc-300">

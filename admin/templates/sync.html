@@ -16,13 +16,13 @@
 
 <div class="bg-[#111113] border border-zinc-800 rounded-2xl p-6 max-w-xl">
     <dl class="space-y-3 text-sm mb-6">
-        <div class="flex justify-between"><dt class="text-zinc-500">Loja</dt><dd class="text-zinc-200">{{ dealership.nome if dealership else "—" }}</dd></div>
-        <div class="flex justify-between"><dt class="text-zinc-500">Conector</dt><dd class="text-zinc-200">{{ dealership.connector_type if dealership else "—" }}</dd></div>
-        <div class="flex justify-between"><dt class="text-zinc-500">Veículos no banco local</dt><dd class="text-zinc-200">{{ total_vehicles }}</dd></div>
-        <div class="flex justify-between"><dt class="text-zinc-500">Última sincronização</dt><dd class="text-zinc-200">{{ (dealership.last_sync_at if dealership else None) | local_time("%d/%m/%Y %H:%M", "nunca") }}</dd></div>
+        <div class="flex justify-between"><dt class="text-zinc-500">Loja</dt><dd class="text-zinc-200">{{ loja.nome if loja else "—" }}</dd></div>
+        <div class="flex justify-between"><dt class="text-zinc-500">Conector</dt><dd class="text-zinc-200">{{ loja.tipo_conector if loja else "—" }}</dd></div>
+        <div class="flex justify-between"><dt class="text-zinc-500">Veículos no banco local</dt><dd class="text-zinc-200">{{ total_veiculos }}</dd></div>
+        <div class="flex justify-between"><dt class="text-zinc-500">Última sincronização</dt><dd class="text-zinc-200">{{ (loja.ultima_sincronizacao if loja else None) | local_time("%d/%m/%Y %H:%M", "nunca") }}</dd></div>
     </dl>
 
-    <form method="post" action="/admin/sync/run">
+    <form method="post" action="/admin/sincronizacao/executar">
         <button type="submit" class="bg-amber-450 text-black font-medium rounded-lg px-5 py-2.5 text-sm hover:brightness-110 transition">
             🔄 Sincronizar agora
         </button>

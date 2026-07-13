@@ -7,8 +7,8 @@
 
     <h1 class="text-2xl font-semibold text-zinc-900 mt-4">{{ post.titulo }}</h1>
 
-    {% if post.imagem_local_path or post.imagem_url %}
-    <img src="{{ img_src(post.imagem_local_path, post.imagem_url, 1200, 675) }}"
+    {% if post.caminho_local_imagem or post.url_imagem %}
+    <img src="{{ imagem_src(post.caminho_local_imagem, post.url_imagem, 1200, 675) }}"
          class="w-full rounded-2xl bg-zinc-200 object-cover mt-4" style="aspect-ratio: 16/9;" alt="{{ post.titulo }}">
     {% endif %}
 

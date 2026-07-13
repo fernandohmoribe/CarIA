@@ -10,25 +10,25 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 
-_timestamps: dict[str, deque] = defaultdict(deque)
-_blocked: dict[str, float] = {}
+_carimbos_tempo: dict[str, deque] = defaultdict(deque)
+_bloqueados: dict[str, float] = {}
 
 
-def is_rate_limited(key: str, max_requests: int, window_seconds: int, block_seconds: int) -> bool:
-    """Retorna True se `key` excedeu `max_requests` dentro de `window_seconds` — nesse caso,
-    fica bloqueada por `block_seconds` antes de poder tentar de novo."""
-    now = time.time()
-    if key in _blocked:
-        if now < _blocked[key]:
+def esta_limitado_por_taxa(chave: str, max_requisicoes: int, janela_segundos: int, segundos_bloqueio: int) -> bool:
+    """Retorna True se `chave` excedeu `max_requisicoes` dentro de `janela_segundos` — nesse
+    caso, fica bloqueada por `segundos_bloqueio` antes de poder tentar de novo."""
+    agora = time.time()
+    if chave in _bloqueados:
+        if agora < _bloqueados[chave]:
             return True
-        del _blocked[key]
+        del _bloqueados[chave]
 
-    dq = _timestamps[key]
-    while dq and now - dq[0] > window_seconds:
+    dq = _carimbos_tempo[chave]
+    while dq and agora - dq[0] > janela_segundos:
         dq.popleft()
-    dq.append(now)
+    dq.append(agora)
 
-    if len(dq) > max_requests:
-        _blocked[key] = now + block_seconds
+    if len(dq) > max_requisicoes:
+        _bloqueados[chave] = agora + segundos_bloqueio
         return True
     return False

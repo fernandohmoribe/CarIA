@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Veículos{% endblock %} — {{ dealership_name }}</title>
+    <title>{% block title %}Veículos{% endblock %} — {{ nome_loja }}</title>
     <link rel="shortcut icon" href="/static/favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -23,7 +23,7 @@
                 <a href="/sobre-nos" class="text-zinc-300 text-sm hover:text-white transition">Sobre Nós</a>
                 <a href="/novidades" class="text-zinc-300 text-sm hover:text-white transition">Novidades</a>
             </nav>
-            <a href="/" class="shrink-0"><img src="/static/logo.png" alt="{{ dealership_name }}" class="h-12"></a>
+            <a href="/" class="shrink-0"><img src="/static/logo.png" alt="{{ nome_loja }}" class="h-12"></a>
             <nav class="hidden sm:flex items-center gap-8 flex-1">
                 <a href="/veiculos" class="text-zinc-300 text-sm hover:text-white transition">Estoque</a>
                 <a href="/contato" class="text-zinc-300 text-sm hover:text-white transition">Contato</a>
@@ -42,22 +42,22 @@
                 <p class="leading-relaxed text-zinc-400">{{ quem_somos }}</p>
                 <a href="/sobre-nos" class="text-brand text-xs hover:underline mt-2 inline-block">Saiba mais →</a>
             </div>
-            {% if dealership_phone %}
+            {% if telefone_loja %}
             <div>
                 <h3 class="text-white font-semibold text-xs tracking-wide mb-3">CONTATO</h3>
-                <p>📞 {{ dealership_phone }}</p>
+                <p>📞 {{ telefone_loja }}</p>
                 <a href="/contato" class="text-brand text-xs hover:underline mt-2 inline-block">Fale conosco →</a>
             </div>
             {% endif %}
-            {% if dealership_address %}
+            {% if endereco_loja %}
             <div>
                 <h3 class="text-white font-semibold text-xs tracking-wide mb-3">ENDEREÇO</h3>
-                <p>{{ dealership_address }}</p>
+                <p>{{ endereco_loja }}</p>
             </div>
             {% endif %}
         </div>
         <div class="border-t border-zinc-800 px-6 py-4 text-center text-xs text-zinc-500">
-            {{ dealership_name }}
+            {{ nome_loja }}
         </div>
     </footer>
 

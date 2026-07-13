@@ -5,7 +5,7 @@
 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
     <div>
         <h1 class="text-2xl font-semibold text-zinc-900">Nossos veículos</h1>
-        <p class="text-zinc-500 text-sm mt-1">{{ vehicles|length }} veículo(s) disponível(is)</p>
+        <p class="text-zinc-500 text-sm mt-1">{{ veiculos|length }} veículo(s) disponível(is)</p>
     </div>
 </div>
 
@@ -13,25 +13,25 @@
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <select name="marca" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
             <option value="">Marca</option>
-            {% for m in options.marcas %}
+            {% for m in opcoes.marcas %}
             <option value="{{ m }}" {% if filtros.marca == m %}selected{% endif %}>{{ m }}</option>
             {% endfor %}
         </select>
         <select name="carroceria" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
             <option value="">Carroceria</option>
-            {% for c in options.carrocerias %}
+            {% for c in opcoes.carrocerias %}
             <option value="{{ c }}" {% if filtros.carroceria == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
         </select>
         <select name="cambio" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
             <option value="">Câmbio</option>
-            {% for c in options.cambios %}
+            {% for c in opcoes.cambios %}
             <option value="{{ c }}" {% if filtros.cambio == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
         </select>
         <select name="combustivel" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
             <option value="">Combustível</option>
-            {% for c in options.combustiveis %}
+            {% for c in opcoes.combustiveis %}
             <option value="{{ c }}" {% if filtros.combustivel == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
         </select>
@@ -49,15 +49,15 @@
 </form>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-    {% for v in vehicles %}
+    {% for v in veiculos %}
     <a href="/veiculos/{{ v.slug }}" class="block bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">
-        <img src="{{ img_src(v.cover_local_path, v.cover_image_url, 1000, 750) }}" loading="lazy"
-             class="w-full h-44 object-cover bg-zinc-100" alt="{{ v.brand }} {{ v.model }}">
+        <img src="{{ imagem_src(v.caminho_capa, v.url_imagem_capa, 1000, 750) }}" loading="lazy"
+             class="w-full h-44 object-cover bg-zinc-100" alt="{{ v.marca }} {{ v.modelo }}">
         <div class="p-4">
-            <h3 class="font-semibold text-zinc-900">{{ v.brand }} {{ v.model }}</h3>
-            <p class="text-zinc-500 text-xs mb-2">{{ v.version or "" }}</p>
-            <p class="text-brand font-bold text-lg">R$ {{ v.price|brl }}</p>
-            <p class="text-zinc-500 text-xs mt-1">{{ v.year }} · {{ "{:,}".format(v.mileage or 0).replace(",", ".") }} km{% if v.transmission %} · {{ v.transmission }}{% endif %}</p>
+            <h3 class="font-semibold text-zinc-900">{{ v.marca }} {{ v.modelo }}</h3>
+            <p class="text-zinc-500 text-xs mb-2">{{ v.versao or "" }}</p>
+            <p class="text-brand font-bold text-lg">R$ {{ v.preco|brl }}</p>
+            <p class="text-zinc-500 text-xs mt-1">{{ v.ano }} · {{ "{:,}".format(v.quilometragem or 0).replace(",", ".") }} km{% if v.cambio %} · {{ v.cambio }}{% endif %}</p>
         </div>
     </a>
     {% else %}

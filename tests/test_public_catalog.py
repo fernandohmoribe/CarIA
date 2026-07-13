@@ -1,40 +1,40 @@
 from fastapi.testclient import TestClient
 
-from database import SessionLocal, Vehicle, get_default_dealership, get_or_create_dealership
+from database import SessionLocal, Veiculo, obter_loja_padrao, obter_ou_criar_loja
 from main import app
 
 
 def _logged_in_client() -> TestClient:
     client = TestClient(app)
-    client.post("/admin/login", data={"username": "admin", "password": "test-password"})
+    client.post("/admin/login", data={"nome_usuario": "admin", "senha": "test-password"})
     return client
 
 
-def _dealership_id():
+def _loja_id():
     db = SessionLocal()
-    dealership = get_default_dealership(db) or get_or_create_dealership(
-        db, nome="Loja Catalogo Publico", connector_type="supabase", connector_config={}
+    loja = obter_loja_padrao(db) or obter_ou_criar_loja(
+        db, nome="Loja Catalogo Publico", tipo_conector="supabase", config_conector={}
     )
-    dealership_id = dealership.id
+    loja_id = loja.id
     db.close()
-    return dealership_id
+    return loja_id
 
 
-def _make_vehicle(dealership_id, slug, brand, model, status="Disponivel", publication_status="Publicado"):
+def _make_veiculo(loja_id, slug, marca, modelo, status="Disponivel", status_publicacao="Publicado"):
     db = SessionLocal()
-    vehicle = Vehicle(
-        dealership_id=dealership_id, slug=slug, brand=brand, model=model, year=2022, price=90000.0,
-        status=status, publication_status=publication_status,
+    veiculo = Veiculo(
+        loja_id=loja_id, slug=slug, marca=marca, modelo=modelo, ano=2022, preco=90000.0,
+        status=status, status_publicacao=status_publicacao,
     )
-    db.add(vehicle)
+    db.add(veiculo)
     db.commit()
     db.close()
     return slug
 
 
 def test_public_catalog_lists_published_available_vehicle():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "catalogo-publico-disponivel", "Fiat", "Mobi Catalogo Publico")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "catalogo-publico-disponivel", "Fiat", "Mobi Catalogo Publico")
 
     client = TestClient(app)
     resp = client.get("/veiculos")
@@ -43,9 +43,9 @@ def test_public_catalog_lists_published_available_vehicle():
 
 
 def test_public_catalog_hides_sold_and_draft_vehicles_but_admin_still_sees_them():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "catalogo-vendido-oculto", "Fiat", "Mobi Vendido Oculto", status="Vendido")
-    _make_vehicle(dealership_id, "catalogo-rascunho-oculto", "Fiat", "Mobi Rascunho Oculto", publication_status="Rascunho")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "catalogo-vendido-oculto", "Fiat", "Mobi Vendido Oculto", status="Vendido")
+    _make_veiculo(loja_id, "catalogo-rascunho-oculto", "Fiat", "Mobi Rascunho Oculto", status_publicacao="Rascunho")
 
     public_client = TestClient(app)
     resp = public_client.get("/veiculos")
@@ -53,15 +53,15 @@ def test_public_catalog_hides_sold_and_draft_vehicles_but_admin_still_sees_them(
     assert "Mobi Rascunho Oculto" not in resp.text
 
     admin_client = _logged_in_client()
-    resp = admin_client.get("/admin/vehicles")
+    resp = admin_client.get("/admin/veiculos")
     assert "Mobi Vendido Oculto" in resp.text
     assert "Mobi Rascunho Oculto" in resp.text
 
 
 def test_public_vehicle_detail_200_for_published_404_for_hidden():
-    dealership_id = _dealership_id()
-    _make_vehicle(dealership_id, "catalogo-detalhe-publicado", "Renault", "Sandero Detalhe Publico")
-    _make_vehicle(dealership_id, "catalogo-detalhe-oculto", "Renault", "Sandero Detalhe Oculto", status="Vendido")
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "catalogo-detalhe-publicado", "Renault", "Sandero Detalhe Publico")
+    _make_veiculo(loja_id, "catalogo-detalhe-oculto", "Renault", "Sandero Detalhe Oculto", status="Vendido")
 
     client = TestClient(app)
     resp = client.get("/veiculos/catalogo-detalhe-publicado")
@@ -76,10 +76,10 @@ def test_public_vehicle_detail_200_for_published_404_for_hidden():
 
 
 def test_submit_interest_form_creates_lead_visible_in_admin():
-    from database import get_all_leads
+    from database import obter_todos_leads
 
-    dealership_id = _dealership_id()
-    slug = _make_vehicle(dealership_id, "catalogo-interesse-cria-lead", "Toyota", "Corolla Interesse Teste")
+    loja_id = _loja_id()
+    slug = _make_veiculo(loja_id, "catalogo-interesse-cria-lead", "Toyota", "Corolla Interesse Teste")
 
     client = TestClient(app)
     resp = client.post(
@@ -90,7 +90,7 @@ def test_submit_interest_form_creates_lead_visible_in_admin():
     assert "Recebemos seu interesse" in resp.text
 
     db = SessionLocal()
-    leads = get_all_leads(db, dealership_id)
+    leads = obter_todos_leads(db, loja_id)
     db.close()
     match = [l for l in leads if l.telefone == "(44) 91234-5678"]
     assert len(match) == 1
@@ -102,26 +102,26 @@ def test_submit_interest_form_creates_lead_visible_in_admin():
 
 
 def test_submit_interest_twice_same_phone_updates_same_lead():
-    from database import get_all_leads
+    from database import obter_todos_leads
 
-    dealership_id = _dealership_id()
-    slug = _make_vehicle(dealership_id, "catalogo-interesse-dedup", "Honda", "Civic Interesse Dedup")
+    loja_id = _loja_id()
+    slug = _make_veiculo(loja_id, "catalogo-interesse-dedup", "Honda", "Civic Interesse Dedup")
 
     client = TestClient(app)
     client.post(f"/veiculos/{slug}/interesse", data={"nome": "Primeiro Nome", "telefone": "44 98888-1111"})
     client.post(f"/veiculos/{slug}/interesse", data={"nome": "Nome Atualizado", "telefone": "(44) 988881111"})
 
     db = SessionLocal()
-    leads = get_all_leads(db, dealership_id)
+    leads = obter_todos_leads(db, loja_id)
     db.close()
-    match = [l for l in leads if l.phone_number == "44988881111"]
+    match = [l for l in leads if l.numero_telefone == "44988881111"]
     assert len(match) == 1
     assert match[0].nome == "Nome Atualizado"
 
 
 def test_interest_form_rate_limited_after_too_many_submissions():
-    dealership_id = _dealership_id()
-    slug = _make_vehicle(dealership_id, "catalogo-interesse-rate-limit", "Fiat", "Argo Rate Limit Teste")
+    loja_id = _loja_id()
+    slug = _make_veiculo(loja_id, "catalogo-interesse-rate-limit", "Fiat", "Argo Rate Limit Teste")
 
     client = TestClient(app)
     last_status = None

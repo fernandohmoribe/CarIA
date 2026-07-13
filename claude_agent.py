@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 import anthropic
 
 import inventory
-from database import SessionLocal, get_default_dealership, get_or_create_lead, lead_to_dict, update_lead
+from database import SessionLocal, atualizar_lead, lead_para_dict, obter_loja_padrao, obter_ou_criar_lead
 from dealership_config import BUSINESS_TZ, SYSTEM_PROMPT
 
 MODEL = "claude-haiku-4-5"
@@ -86,7 +86,7 @@ LEAD_TOOL["cache_control"] = {"type": "ephemeral"}
 
 TOOLS = inventory.TOOLS + [LEAD_TOOL]
 
-_DIA_SEMANA_INDEX = {nome: i for i, nome in enumerate(DIAS_SEMANA)}
+_INDICE_DIA_SEMANA = {nome: i for i, nome in enumerate(DIAS_SEMANA)}
 
 
 def _resolver_dia_visita(dia_visita: Optional[str], periodo_visita: Optional[str]) -> Optional[str]:
@@ -101,8 +101,8 @@ def _resolver_dia_visita(dia_visita: Optional[str], periodo_visita: Optional[str
         alvo = agora
     elif chave in ("amanhã", "amanha"):
         alvo = agora + timedelta(days=1)
-    elif chave in _DIA_SEMANA_INDEX:
-        delta = (_DIA_SEMANA_INDEX[chave] - agora.weekday()) % 7
+    elif chave in _INDICE_DIA_SEMANA:
+        delta = (_INDICE_DIA_SEMANA[chave] - agora.weekday()) % 7
         # "quinta-feira" citada quando hoje já é quinta significa a quinta que vem, não hoje —
         # pra hoje mesmo a IA usa o valor "hoje", que cai no primeiro if acima.
         delta = delta or 7
@@ -116,36 +116,36 @@ def _resolver_dia_visita(dia_visita: Optional[str], periodo_visita: Optional[str
     return resolvido
 
 
-def _handle_lead_tool(tool_input: dict, dealership_id: int, phone: str) -> dict:
-    dia_visita = tool_input.pop("dia_visita", None)
-    periodo_visita = tool_input.pop("periodo_visita", None)
+def _processar_tool_lead(entrada_tool: dict, loja_id: int, telefone: str) -> dict:
+    dia_visita = entrada_tool.pop("dia_visita", None)
+    periodo_visita = entrada_tool.pop("periodo_visita", None)
     resolvido = _resolver_dia_visita(dia_visita, periodo_visita)
     if resolvido:
-        tool_input["preferencia_contato"] = resolvido
+        entrada_tool["preferencia_contato"] = resolvido
 
     db = SessionLocal()
     try:
-        lead, is_new = get_or_create_lead(db, dealership_id, phone)
-        status_before = lead.status
-        preferencia_before = lead.preferencia_contato
+        lead, eh_novo = obter_ou_criar_lead(db, loja_id, telefone)
+        status_antes = lead.status
+        preferencia_antes = lead.preferencia_contato
 
-        lead = update_lead(db, lead, tool_input)
+        lead = atualizar_lead(db, lead, entrada_tool)
 
-        notify = (
-            is_new
-            or lead.status != status_before
-            or (tool_input.get("preferencia_contato") and not preferencia_before)
+        notificar = (
+            eh_novo
+            or lead.status != status_antes
+            or (entrada_tool.get("preferencia_contato") and not preferencia_antes)
             or lead.prioridade == "quente"
         )
-        result = lead_to_dict(lead)
-        result["_notify"] = notify
-        result["_is_new"] = is_new
-        return result
+        resultado = lead_para_dict(lead)
+        resultado["_notify"] = notificar
+        resultado["_is_new"] = eh_novo
+        return resultado
     finally:
         db.close()
 
 
-def _content_blocks(content) -> list:
+def _blocos_conteudo(content) -> list:
     """Normaliza content (string, blocks do SDK ou lista de dicts) pra lista de dicts —
     necessário pra poder anexar cache_control num bloco específico."""
     if isinstance(content, str):
@@ -153,22 +153,22 @@ def _content_blocks(content) -> list:
     return [block.model_dump(exclude_none=True) if hasattr(block, "model_dump") else dict(block) for block in content]
 
 
-def _refresh_cache_breakpoint(api_messages: list) -> None:
+def _atualizar_ponto_cache(mensagens_api: list) -> None:
     """Move o breakpoint de cache pro fim do histórico atual, removendo o anterior.
 
     Sem isso, cada chamada extra do loop de tool use (e o turno seguinte, que reenvia
     o mesmo histórico) paga preço cheio de input em vez de cache read (~10x mais barato)
     pra reenviar o mesmo prefixo de conversa repetidamente.
     """
-    for msg in api_messages:
+    for msg in mensagens_api:
         for block in msg["content"]:
             block.pop("cache_control", None)
-    if api_messages:
-        api_messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}
+    if mensagens_api:
+        mensagens_api[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}
 
 
-def _handle_photos_tool(tool_input: dict, dealership_id: int) -> dict:
-    data = inventory.listar_fotos_veiculo(dealership_id=dealership_id, slug=tool_input.get("slug", ""))
+def _processar_tool_fotos(entrada_tool: dict, loja_id: int) -> dict:
+    data = inventory.listar_fotos_veiculo(loja_id=loja_id, slug=entrada_tool.get("slug", ""))
     if data.get("erro") or not data.get("fotos"):
         return {"erro": data.get("erro") or "Nenhuma foto encontrada pra esse veículo."}
     return {
@@ -183,23 +183,23 @@ def _handle_photos_tool(tool_input: dict, dealership_id: int) -> dict:
     }
 
 
-def _dispatch_tool(name: str, tool_input: dict, dealership_id: int, phone: str) -> dict:
+def _despachar_tool(name: str, entrada_tool: dict, loja_id: int, telefone: str) -> dict:
     if name == "buscar_veiculos":
-        return inventory.buscar_veiculos(dealership_id=dealership_id, **tool_input)
+        return inventory.buscar_veiculos(loja_id=loja_id, **entrada_tool)
     if name == "detalhes_veiculo":
-        return inventory.detalhes_veiculo(dealership_id=dealership_id, **tool_input)
+        return inventory.detalhes_veiculo(loja_id=loja_id, **entrada_tool)
     if name == "enviar_fotos_veiculo":
-        return _handle_photos_tool(tool_input, dealership_id)
+        return _processar_tool_fotos(entrada_tool, loja_id)
     if name == "criar_ou_atualizar_lead":
-        return _handle_lead_tool(tool_input, dealership_id, phone)
+        return _processar_tool_lead(entrada_tool, loja_id, telefone)
     return {"erro": f"tool desconhecida: {name}"}
 
 
-def get_ai_response(
-    messages: list,
-    user_message: str,
-    phone: str,
-    push_name: str = "",
+def obter_resposta_ia(
+    mensagens: list,
+    mensagem_usuario: str,
+    telefone: str,
+    nome_exibicao: str = "",
 ) -> Tuple[str, Optional[dict], Optional[dict]]:
     """
     Gera resposta da IA, executando o loop de tool use (consulta de estoque e
@@ -207,89 +207,89 @@ def get_ai_response(
 
     Retorna: (texto_resposta, lead_para_notificar | None, fotos_para_enviar | None)
     """
-    first_message = user_message
-    if push_name and not messages:
-        first_message = f"[Cliente: {push_name}] {user_message}"
+    primeira_mensagem = mensagem_usuario
+    if nome_exibicao and not mensagens:
+        primeira_mensagem = f"[Cliente: {nome_exibicao}] {mensagem_usuario}"
 
-    api_messages = [{"role": m["role"], "content": _content_blocks(m["content"])} for m in messages]
-    api_messages.append({"role": "user", "content": _content_blocks(first_message)})
+    mensagens_api = [{"role": m["role"], "content": _blocos_conteudo(m["content"])} for m in mensagens]
+    mensagens_api.append({"role": "user", "content": _blocos_conteudo(primeira_mensagem)})
 
-    if len(api_messages) > MAX_HISTORY_MESSAGES:
-        api_messages = api_messages[-MAX_HISTORY_MESSAGES:]
+    if len(mensagens_api) > MAX_HISTORY_MESSAGES:
+        mensagens_api = mensagens_api[-MAX_HISTORY_MESSAGES:]
 
     agora = datetime.now(BUSINESS_TZ)
     dia_semana = DIAS_SEMANA[agora.weekday()]
     periodo = "manhã" if agora.hour < 12 else "tarde" if agora.hour < 18 else "noite"
     hoje = f"{dia_semana}, {agora.strftime('%d/%m/%Y')}, {periodo} (horário de Brasília)"
-    system_with_date = f"Hoje é {hoje}.\n\n{SYSTEM_PROMPT}"
+    system_com_data = f"Hoje é {hoje}.\n\n{SYSTEM_PROMPT}"
 
     db = SessionLocal()
     try:
-        dealership = get_default_dealership(db)
+        loja = obter_loja_padrao(db)
     finally:
         db.close()
-    dealership_id = dealership.id if dealership else None
+    loja_id = loja.id if loja else None
 
-    lead_to_notify = None
-    photos_to_send = None
+    lead_para_notificar = None
+    fotos_para_enviar = None
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        _refresh_cache_breakpoint(api_messages)
+        _atualizar_ponto_cache(mensagens_api)
         response = _client.messages.create(
             model=MODEL,
             max_tokens=MAX_TOKENS,
-            system=[{"type": "text", "text": system_with_date, "cache_control": {"type": "ephemeral"}}],
-            messages=api_messages,
+            system=[{"type": "text", "text": system_com_data, "cache_control": {"type": "ephemeral"}}],
+            messages=mensagens_api,
             tools=TOOLS,
         )
-        _log_usage(response.usage, phone)
+        _registrar_uso(response.usage, telefone)
 
         if response.stop_reason != "tool_use":
-            final_text = "".join(block.text for block in response.content if block.type == "text").strip()
-            return final_text, lead_to_notify, photos_to_send
+            texto_final = "".join(block.text for block in response.content if block.type == "text").strip()
+            return texto_final, lead_para_notificar, fotos_para_enviar
 
         # Turno intermediário (ainda vai chamar mais tool): o texto que vem junto ("vou
         # verificar...", "aqui está a ficha completa:") é descartado de propósito — só o texto
         # do turno final (acima) chega pro cliente. Sem isso, cada narração de "vou fazer X"
         # entre uma tool call e outra se acumulava e ia toda pro WhatsApp.
-        api_messages.append({"role": "assistant", "content": _content_blocks(response.content)})
-        tool_results = []
+        mensagens_api.append({"role": "assistant", "content": _blocos_conteudo(response.content)})
+        resultados_tool = []
         for block in response.content:
             if block.type != "tool_use":
                 continue
-            result = _dispatch_tool(block.name, block.input, dealership_id, phone)
-            if block.name == "criar_ou_atualizar_lead" and result.get("_notify"):
-                lead_to_notify = result
-            if block.name == "enviar_fotos_veiculo" and "_fotos" in result:
-                photos_to_send = {"veiculo": result.get("veiculo"), "fotos": result.pop("_fotos")}
-            tool_results.append(
+            resultado = _despachar_tool(block.name, block.input, loja_id, telefone)
+            if block.name == "criar_ou_atualizar_lead" and resultado.get("_notify"):
+                lead_para_notificar = resultado
+            if block.name == "enviar_fotos_veiculo" and "_fotos" in resultado:
+                fotos_para_enviar = {"veiculo": resultado.get("veiculo"), "fotos": resultado.pop("_fotos")}
+            resultados_tool.append(
                 {
                     "type": "tool_result",
                     "tool_use_id": block.id,
-                    "content": json.dumps(result, ensure_ascii=False, default=str),
+                    "content": json.dumps(resultado, ensure_ascii=False, default=str),
                 }
             )
-        api_messages.append({"role": "user", "content": tool_results})
+        mensagens_api.append({"role": "user", "content": resultados_tool})
 
     # Estourou o limite de iterações de tool use: força uma resposta final sem tools
-    _refresh_cache_breakpoint(api_messages)
+    _atualizar_ponto_cache(mensagens_api)
     response = _client.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
-        system=[{"type": "text", "text": system_with_date, "cache_control": {"type": "ephemeral"}}],
-        messages=api_messages,
+        system=[{"type": "text", "text": system_com_data, "cache_control": {"type": "ephemeral"}}],
+        messages=mensagens_api,
     )
-    final_text = "".join(block.text for block in response.content if block.type == "text").strip()
-    return final_text, lead_to_notify, photos_to_send
+    texto_final = "".join(block.text for block in response.content if block.type == "text").strip()
+    return texto_final, lead_para_notificar, fotos_para_enviar
 
 
-def _log_usage(usage, phone: str):
+def _registrar_uso(usage, telefone: str):
     input_tok = getattr(usage, "input_tokens", 0) or 0
     output_tok = getattr(usage, "output_tokens", 0) or 0
     cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
     cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
 
-    cost = (
+    custo = (
         input_tok * PRICE_INPUT / 1_000_000
         + output_tok * PRICE_OUTPUT / 1_000_000
         + cache_write * PRICE_CACHE_WRITE / 1_000_000
@@ -297,8 +297,8 @@ def _log_usage(usage, phone: str):
     )
 
     logger.info(
-        f"[CUSTO] {phone} | "
+        f"[CUSTO] {telefone} | "
         f"in={input_tok} out={output_tok} "
         f"cache_w={cache_write} cache_r={cache_read} | "
-        f"${cost:.6f} (~R${cost * 5.5:.4f})"
+        f"${custo:.6f} (~R${custo * 5.5:.4f})"
     )

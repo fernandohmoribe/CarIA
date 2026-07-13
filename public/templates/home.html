@@ -4,7 +4,7 @@
 
 <section class="text-center py-14 sm:py-20">
     <h1 class="text-3xl sm:text-5xl font-extrabold text-zinc-900 tracking-tight leading-tight">
-        SEU PRÓXIMO CARRO<br>ESTÁ AQUI NA <span class="text-brand">{{ dealership_name|upper }}</span>
+        SEU PRÓXIMO CARRO<br>ESTÁ AQUI NA <span class="text-brand">{{ nome_loja|upper }}</span>
     </h1>
     <p class="text-zinc-500 text-sm sm:text-base mt-5 max-w-xl mx-auto">
         Multimarcas com procedência garantida, atendimento próximo e as melhores condições pra
@@ -25,8 +25,8 @@
     <h2 class="text-xl font-semibold text-zinc-900 text-center mb-8">O que nossos clientes dizem</h2>
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto">
         {% for v in videos %}
-        <a href="{{ v.permalink }}" target="_blank" rel="noopener" class="relative block rounded-xl overflow-hidden bg-zinc-200 aspect-[9/16] group">
-            <img src="{{ v.thumbnail_url or v.media_url }}" class="w-full h-full object-cover" alt="Depoimento de cliente">
+        <a href="{{ v.link_permanente }}" target="_blank" rel="noopener" class="relative block rounded-xl overflow-hidden bg-zinc-200 aspect-[9/16] group">
+            <img src="{{ v.url_miniatura or v.url_midia }}" class="w-full h-full object-cover" alt="Depoimento de cliente">
             <span class="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition">
                 <span class="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center text-brand text-lg">▶</span>
             </span>
@@ -36,29 +36,29 @@
 </section>
 {% endif %}
 
-{% if reviews %}
+{% if avaliacoes %}
 <section class="py-10 border-t border-zinc-200">
     <div class="text-center mb-8">
         <h2 class="text-xl font-semibold text-zinc-900">Avaliações no Google</h2>
-        {% set avg = (reviews|sum(attribute="rating") / reviews|length) if reviews|length else 0 %}
+        {% set avg = (avaliacoes|sum(attribute="nota") / avaliacoes|length) if avaliacoes|length else 0 %}
         <p class="text-amber-500 text-sm mt-1">{{ "★" * (avg|round|int) }}{{ "☆" * (5 - avg|round|int) }} {{ "%.1f"|format(avg) }}</p>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
-        {% for r in reviews %}
+        {% for r in avaliacoes %}
         <div class="bg-white border border-zinc-200 rounded-2xl p-4 shadow-sm">
             <div class="flex items-center gap-2 mb-2">
-                {% if r.profile_photo_url %}
-                <img src="{{ r.profile_photo_url }}" class="w-8 h-8 rounded-full" alt="{{ r.author_name }}">
+                {% if r.url_foto_perfil %}
+                <img src="{{ r.url_foto_perfil }}" class="w-8 h-8 rounded-full" alt="{{ r.nome_autor }}">
                 {% else %}
-                <span class="w-8 h-8 rounded-full bg-zinc-200 flex items-center justify-center text-xs text-zinc-500">{{ r.author_name[:1] }}</span>
+                <span class="w-8 h-8 rounded-full bg-zinc-200 flex items-center justify-center text-xs text-zinc-500">{{ r.nome_autor[:1] }}</span>
                 {% endif %}
                 <div>
-                    <p class="text-sm font-medium text-zinc-900">{{ r.author_name }}</p>
-                    <p class="text-amber-500 text-xs">{{ "★" * r.rating }}{{ "☆" * (5 - r.rating) }}</p>
+                    <p class="text-sm font-medium text-zinc-900">{{ r.nome_autor }}</p>
+                    <p class="text-amber-500 text-xs">{{ "★" * r.nota }}{{ "☆" * (5 - r.nota) }}</p>
                 </div>
             </div>
-            <p class="text-zinc-600 text-xs leading-relaxed">{{ r.text }}</p>
-            <p class="text-zinc-400 text-xs mt-2">{{ r.relative_time_description }}</p>
+            <p class="text-zinc-600 text-xs leading-relaxed">{{ r.texto }}</p>
+            <p class="text-zinc-400 text-xs mt-2">{{ r.tempo_relativo }}</p>
         </div>
         {% endfor %}
     </div>
