@@ -9,7 +9,7 @@
     </div>
 </div>
 
-<form method="get" action="/veiculos" class="bg-white border border-zinc-200 rounded-2xl p-4 mb-6 shadow-sm">
+<form method="get" action="/veiculos" id="filtro-estoque-form" class="bg-white border border-zinc-200 rounded-2xl p-4 mb-6 shadow-sm">
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <select name="marca" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
             <option value="">Marca</option>
@@ -35,10 +35,10 @@
             <option value="{{ c }}" {% if filtros.combustivel == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
         </select>
-        <input name="preco_min" type="number" step="1" placeholder="Preço mín." value="{{ filtros.preco_min|int if filtros.preco_min is not none else '' }}"
-               class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
-        <input name="preco_max" type="number" step="1" placeholder="Preço máx." value="{{ filtros.preco_max|int if filtros.preco_max is not none else '' }}"
-               class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
+        <input name="preco_min" type="text" inputmode="decimal" placeholder="Preço mín." value="{{ filtros.preco_min|brl if filtros.preco_min is not none else '' }}"
+               oninput="maskPreco(this)" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
+        <input name="preco_max" type="text" inputmode="decimal" placeholder="Preço máx." value="{{ filtros.preco_max|brl if filtros.preco_max is not none else '' }}"
+               oninput="maskPreco(this)" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
     </div>
     <div class="flex items-center gap-3 mt-3">
         <button type="submit" class="bg-brand text-white font-medium rounded-lg px-5 py-2 text-sm hover:bg-brand-dark transition">
@@ -64,4 +64,24 @@
     <p class="text-zinc-500 text-sm col-span-full text-center py-10">Nenhum veículo encontrado com esses filtros.</p>
     {% endfor %}
 </div>
+
+<script>
+function maskPreco(el) {
+    let digits = el.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+    if (!digits) { el.value = ""; return; }
+    while (digits.length < 3) digits = "0" + digits;
+    const cents = digits.slice(-2);
+    const intPart = digits.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    el.value = intPart + "," + cents;
+}
+
+document.getElementById("filtro-estoque-form").addEventListener("submit", function () {
+    ["preco_min", "preco_max"].forEach(function (name) {
+        const el = this.elements[name];
+        if (el && el.value) {
+            el.value = el.value.replace(/\./g, "").replace(",", ".");
+        }
+    }, this);
+});
+</script>
 {% endblock %}
