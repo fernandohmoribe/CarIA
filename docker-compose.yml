@@ -2,19 +2,33 @@ version: '3.8'
 
 services:
   waha:
-    image: devlikeapro/waha
+    # Imagem :noweb — motor NOWEB (sem Chromium/Puppeteer embutido), bem mais leve em RAM/CPU
+    # que a imagem padrão (motor WEBJS) — decisão consciente pro servidor compartilhado com
+    # outras 2 aplicações (joytable, nutriai-app) e pouca folga de recurso.
+    image: devlikeapro/waha:noweb
     container_name: waha
     restart: unless-stopped
     ports:
-      - "8080:3000"
-    env_file:
-      - .env
+      # Só localhost — igual joytable/nutriai-app já fazem. O dashboard/API do WAHA pode
+      # ler/mandar mensagem, não pode ficar exposto pra internet. Pra escanear o QR code com
+      # o celular em outro lugar, expor temporariamente pra "0.0.0.0:8080:3000" e reverter
+      # pra isso aqui logo depois que a sessão conectar.
+      - "127.0.0.1:8080:3000"
     environment:
-      - WHATSAPP_HOOK_URL=http://host.docker.internal:3000/webhook/whatsapp
+      # Só as variáveis que o WAHA precisa (não usa env_file: .env inteiro) — evita expor
+      # segredos do CarIA (ANTHROPIC_API_KEY, DATABASE_URL etc) dentro do container do WAHA
+      # à toa, e evita colisão de nomes genéricos (ex: PORT, que o .env do CarIA define como
+      # 3001 pro uvicorn — se o WAHA herdasse isso, tentaria escutar na porta errada aqui
+      # dentro do container). ${VAR} é substituído a partir do .env pelo próprio docker
+      # compose, sem precisar declarar tudo.
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      - WAHA_DASHBOARD_PASSWORD=${WAHA_DASHBOARD_PASSWORD}
+      - WAHA_DASHBOARD_USERNAME=admin
+      # Porta 3001 é a do CarIA (uvicorn) — porta 3000 já é do nutriai-app, nesse mesmo host.
+      - WHATSAPP_HOOK_URL=http://host.docker.internal:3001/webhook/whatsapp
       - WHATSAPP_HOOK_EVENTS=message
       - WAHA_PRINT_QR=true
       - WAHA_LOG_LEVEL=info
-      - WAHA_DASHBOARD_USERNAME=admin
     volumes:
       - waha_data:/app/.sessions
     extra_hosts:
