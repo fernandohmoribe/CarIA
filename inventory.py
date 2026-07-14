@@ -174,10 +174,39 @@ def buscar_veiculos(
         db.close()
 
 
+def _resolver_veiculo_por_slug(db, loja_id: int, slug: str) -> Veiculo | None:
+    """A IA às vezes chama detalhes_veiculo/enviar_fotos_veiculo com um slug "parecido"
+    inventado a partir do nome do carro (ex: "cruze-1-4-turbo-lt-2018") em vez de rebuscar com
+    buscar_veiculos pra pegar o slug real (visto em produção, mesmo com instrução explícita no
+    prompt pra nunca fazer isso — LLM não segue regra negativa com 100% de confiabilidade).
+    Se o slug exato não bater, tenta achar por aproximação: todo token alfanumérico do slug
+    informado precisa aparecer no slug real de um único veículo candidato — evita reafirmar
+    "não encontrado" quando dá pra recuperar o veículo certo mesmo assim."""
+    veiculo = obter_veiculo_publico_por_slug(db, loja_id, slug)
+    if veiculo:
+        return veiculo
+
+    tokens = [t for t in re.split(r"[^a-z0-9]+", slug.lower()) if t]
+    if not tokens:
+        return None
+
+    candidatos = db.query(Veiculo).filter(
+        Veiculo.loja_id == loja_id,
+        Veiculo.status == "Disponivel",
+        Veiculo.status_publicacao == "Publicado",
+    ).all()
+
+    encontrados = [
+        c for c in candidatos
+        if set(tokens) <= set(re.split(r"[^a-z0-9]+", c.slug.lower()))
+    ]
+    return encontrados[0] if len(encontrados) == 1 else None
+
+
 def detalhes_veiculo(loja_id: int, slug: str) -> dict:
     db = SessionLocal()
     try:
-        veiculo = obter_veiculo_publico_por_slug(db, loja_id, slug)
+        veiculo = _resolver_veiculo_por_slug(db, loja_id, slug)
         if not veiculo:
             return {"erro": "Veículo não encontrado na nossa base de dados."}
         return _detalhe(veiculo)
@@ -196,7 +225,7 @@ def listar_fotos_veiculo(loja_id: int, slug: str) -> dict:
     como fallback) pra envio real via WhatsApp — nunca pra exibir como link em texto."""
     db = SessionLocal()
     try:
-        veiculo = obter_veiculo_publico_por_slug(db, loja_id, slug)
+        veiculo = _resolver_veiculo_por_slug(db, loja_id, slug)
         if not veiculo:
             return {"erro": "Veículo não encontrado na nossa base de dados.", "fotos": []}
         if not veiculo.imagens:

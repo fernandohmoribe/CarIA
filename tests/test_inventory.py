@@ -136,3 +136,76 @@ def test_listar_fotos_veiculo_limita_quantidade_enviada():
 
     assert len(resultado["fotos"]) == inventory.MAX_FOTOS_ENVIADAS
     assert inventory.MAX_FOTOS_ENVIADAS < 19
+
+
+def test_listar_fotos_veiculo_resolve_slug_inventado_pela_ia():
+    """Bug real visto em produção: mesmo instruída a nunca fazer isso, a IA às vezes chama
+    enviar_fotos_veiculo com um slug "parecido" inventado a partir do nome do carro (ex:
+    "cruze-1-4-turbo-lt-2018") em vez de rebuscar com buscar_veiculos pro slug de verdade
+    ("cruze-1.4-turbo-lt-16v-flex-4p-automatico-flex-2018-5023413") — LLM não segue regra
+    negativa com 100% de confiabilidade, então o código precisa se defender sozinho."""
+    db = SessionLocal()
+    loja = _make_loja(db, "Loja Slug Inventado")
+    veiculo = _make_veiculo(
+        db, loja.id, marca="Chevrolet", modelo="Cruze", ano=2018,
+        versao="1.4 Turbo Lt 16V Flex 4P Automático",
+        slug="cruze-1.4-turbo-lt-16v-flex-4p-automatico-flex-2018-5023413",
+    )
+    db.add(ImagemVeiculo(veiculo_id=veiculo.id, url_imagem="http://x/0.jpg", ordem=0))
+    db.commit()
+
+    resultado = inventory.listar_fotos_veiculo(loja_id=loja.id, slug="cruze-1-4-turbo-lt-2018")
+
+    assert "erro" not in resultado
+    assert len(resultado["fotos"]) == 1
+
+
+def test_listar_fotos_veiculo_slug_inventado_desambigua_variantes_parecidas():
+    """LT e LTZ são veículos diferentes — um slug inventado pra um não pode "vazar" fotos do
+    outro. O fallback por token precisa ser exato o bastante pra distinguir "lt" de "ltz"."""
+    db = SessionLocal()
+    loja = _make_loja(db, "Loja Slug Desambiguacao")
+    lt = _make_veiculo(
+        db, loja.id, marca="Chevrolet", modelo="Cruze", ano=2018, versao="1.4 Turbo Lt",
+        slug="cruze-1.4-turbo-lt-16v-flex-4p-automatico-flex-2018-5023413",
+    )
+    ltz = _make_veiculo(
+        db, loja.id, marca="Chevrolet", modelo="Cruze", ano=2018, versao="1.4 Turbo Ltz",
+        slug="cruze-1.4-turbo-ltz-16v-flex-4p-automatico-flex-2018-4789973",
+    )
+    db.add(ImagemVeiculo(veiculo_id=lt.id, url_imagem="http://x/lt.jpg", ordem=0))
+    db.add(ImagemVeiculo(veiculo_id=ltz.id, url_imagem="http://x/ltz.jpg", ordem=0))
+    db.commit()
+
+    resultado_lt = inventory.listar_fotos_veiculo(loja_id=loja.id, slug="cruze-1-4-turbo-lt-2018")
+    resultado_ltz = inventory.listar_fotos_veiculo(loja_id=loja.id, slug="cruze-1-4-turbo-ltz-2018")
+
+    assert resultado_lt["fotos"][0]["url"] == "http://x/lt.jpg"
+    assert resultado_ltz["fotos"][0]["url"] == "http://x/ltz.jpg"
+
+
+def test_detalhes_veiculo_tambem_resolve_slug_inventado():
+    db = SessionLocal()
+    loja = _make_loja(db, "Loja Detalhes Slug Inventado")
+    _make_veiculo(
+        db, loja.id, marca="Toyota", modelo="Corolla", ano=2019, versao="2.0 Xei",
+        slug="corolla-2.0-xei-16v-flex-4p-automatico-flex-2019-4870641",
+    )
+
+    resultado = inventory.detalhes_veiculo(loja_id=loja.id, slug="corolla-2-0-xei-2019")
+
+    assert "erro" not in resultado
+    assert resultado["marca"] == "Toyota"
+
+
+def test_listar_fotos_veiculo_slug_totalmente_diferente_nao_encontra_nada():
+    db = SessionLocal()
+    loja = _make_loja(db, "Loja Slug Sem Match")
+    _make_veiculo(
+        db, loja.id, marca="Chevrolet", modelo="Cruze", ano=2018,
+        slug="cruze-1.4-turbo-lt-16v-flex-4p-automatico-flex-2018-5023413",
+    )
+
+    resultado = inventory.listar_fotos_veiculo(loja_id=loja.id, slug="fiat-uno-2010")
+
+    assert resultado.get("erro") == "Veículo não encontrado na nossa base de dados."
