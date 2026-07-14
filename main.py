@@ -11,13 +11,15 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 import rate_limit as _rate_limit
+import template_helpers
 from claude_agent import obter_resposta_ia
+from image_utils import redimensionar_e_salvar_webp
 from database import (
     STATUS_LEAD_FECHADOS,
     STATUS_LEAD_SILENCIADOS,
@@ -72,6 +74,30 @@ MEDIA_ROOT = Path(__file__).parent / "media"
 os.makedirs("media", exist_ok=True)
 app.mount("/media", StaticFiles(directory="media"), name="media")
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
+
+MINIATURAS_ROOT = MEDIA_ROOT / ".miniaturas"
+
+
+@app.get("/media-thumb/{largura}x{altura}/{caminho:path}")
+async def media_thumb(largura: int, altura: int, caminho: str):
+    """Miniatura sob demanda (com cache em disco) das fotos de media/ — servir o arquivo
+    original (~1000x750) num card pequeno de lista faz o navegador decodificar dezenas de
+    imagens em tamanho de tela cheia à toa, travando o scroll. Tamanhos permitidos vêm de
+    template_helpers.TAMANHOS_MINIATURA_LOCAL — lista fechada de propósito, pra não deixar
+    qualquer w/h vindo da URL virar arquivo novo em cache sem limite."""
+    if (largura, altura) not in template_helpers.TAMANHOS_MINIATURA_LOCAL:
+        raise HTTPException(404)
+
+    origem = (MEDIA_ROOT / caminho).resolve()
+    if MEDIA_ROOT.resolve() not in origem.parents or not origem.is_file():
+        raise HTTPException(404)
+
+    destino = MINIATURAS_ROOT / f"{largura}x{altura}" / caminho
+    if not destino.is_file():
+        redimensionar_e_salvar_webp(origem.read_bytes(), destino, width=largura, height=altura)
+
+    return FileResponse(destino, media_type="image/webp")
+
 
 from admin.routes import router as admin_router  # noqa: E402  (depende do app/middleware acima)
 from public.routes import router as public_router  # noqa: E402  (idem)

@@ -27,12 +27,20 @@ def brl(value) -> str:
 
 _IMAGEM_EM_BRANCO = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
 
+# Fotos locais em media/ já vêm em ~1000x750 (tamanho de tela cheia, ver image_utils.py) —
+# card de lista/miniatura não precisa disso, e decodificar dezenas delas de uma vez é o que
+# deixa o scroll travado. /media-thumb/ (main.py) gera e cacheia uma versão bem menor sob
+# demanda — lista fechada de tamanhos de propósito (evita cache-flooding com w/h arbitrário).
+TAMANHOS_MINIATURA_LOCAL = {(400, 300)}
+
 
 def imagem_src(caminho_local: str, url_remota: str, width: int, height: int, quality: int = 65) -> str:
     """Prefere a foto já baixada em media/ — só cai pro Supabase se ainda não tiver sido baixada.
     Sem nenhuma das duas (ex: veículo cadastrado manualmente sem foto), devolve um GIF
     transparente 1x1 em vez de deixar `src="None"` ir pro HTML (link quebrado de verdade)."""
     if caminho_local:
+        if (width, height) in TAMANHOS_MINIATURA_LOCAL:
+            return f"/media-thumb/{width}x{height}/{caminho_local}"
         return f"/media/{caminho_local}"
     if url_remota:
         return transformar_url_imagem(url_remota, width, height, quality)

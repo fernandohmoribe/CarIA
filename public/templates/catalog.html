@@ -51,7 +51,7 @@
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
     {% for v in veiculos %}
     <a href="/veiculos/{{ v.slug }}" class="block bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">
-        <img src="{{ imagem_src(v.caminho_capa, v.url_imagem_capa, 1000, 750) }}" loading="lazy"
+        <img src="{{ imagem_src(v.caminho_capa, v.url_imagem_capa, 400, 300) }}" loading="lazy"
              class="w-full h-44 object-cover bg-zinc-100" alt="{{ v.marca }} {{ v.modelo }}">
         <div class="p-4">
             <h3 class="font-semibold text-zinc-900">{{ v.marca }} {{ v.modelo }}</h3>
