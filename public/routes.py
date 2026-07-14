@@ -24,7 +24,6 @@ from database import (
     obter_ou_criar_lead,
     obter_posts_instagram_visiveis,
     obter_veiculo_publico_por_slug,
-    obter_veiculos_publicos,
     obter_veiculos_publicos_filtrados,
 )
 from dealership_config import DEALERSHIP_ADDRESS, DEALERSHIP_HOURS, DEALERSHIP_NAME, DEALERSHIP_PHONE
@@ -231,21 +230,18 @@ def _analisar_float(value: str | None) -> float | None:
 @router.get("/veiculos", response_class=HTMLResponse)
 async def veiculos_lista(request: Request, marca: str | None = None, preco_min: str | None = None,
                           preco_max: str | None = None, carroceria: str | None = None,
-                          cambio: str | None = None, combustivel: str | None = None):
+                          cambio: str | None = None, combustivel: str | None = None,
+                          ordenar: str | None = None):
     preco_min = _analisar_float(preco_min)
     preco_max = _analisar_float(preco_max)
     db = SessionLocal()
     try:
         loja = obter_loja_padrao(db)
         loja_id = loja.id if loja else None
-        tem_filtros = any([marca, preco_min, preco_max, carroceria, cambio, combustivel])
-        if tem_filtros:
-            veiculos = obter_veiculos_publicos_filtrados(
-                db, loja_id, marca=marca, preco_min=preco_min, preco_max=preco_max,
-                carroceria=carroceria, cambio=cambio, combustivel=combustivel,
-            )
-        else:
-            veiculos = obter_veiculos_publicos(db, loja_id)
+        veiculos = obter_veiculos_publicos_filtrados(
+            db, loja_id, marca=marca, preco_min=preco_min, preco_max=preco_max,
+            carroceria=carroceria, cambio=cambio, combustivel=combustivel, ordenar=ordenar,
+        )
         opcoes = obter_opcoes_filtro_publico(db, loja_id)
         return templates.TemplateResponse(
             request,
@@ -255,6 +251,7 @@ async def veiculos_lista(request: Request, marca: str | None = None, preco_min: 
                 "filtros": {
                     "marca": marca or "", "preco_min": preco_min, "preco_max": preco_max,
                     "carroceria": carroceria or "", "cambio": cambio or "", "combustivel": combustivel or "",
+                    "ordenar": ordenar or "preco_asc",
                 },
             },
         )

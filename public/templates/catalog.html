@@ -39,6 +39,12 @@
                oninput="maskPreco(this)" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
         <input name="preco_max" type="text" inputmode="decimal" placeholder="Preço máx." value="{{ filtros.preco_max|brl if filtros.preco_max is not none else '' }}"
                oninput="maskPreco(this)" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
+        <select name="ordenar" onchange="this.form.submit()" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
+            <option value="preco_asc" {% if filtros.ordenar == "preco_asc" %}selected{% endif %}>Menor preço</option>
+            <option value="preco_desc" {% if filtros.ordenar == "preco_desc" %}selected{% endif %}>Maior preço</option>
+            <option value="ano_desc" {% if filtros.ordenar == "ano_desc" %}selected{% endif %}>Ano mais novo</option>
+            <option value="km_asc" {% if filtros.ordenar == "km_asc" %}selected{% endif %}>Menor km</option>
+        </select>
     </div>
     <div class="flex items-center gap-3 mt-3">
         <button type="submit" class="bg-brand text-white font-medium rounded-lg px-5 py-2 text-sm hover:bg-brand-dark transition">

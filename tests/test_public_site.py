@@ -303,6 +303,75 @@ def test_catalog_filter_dropdowns_populated_from_real_stock():
     assert '<option value="Gasolina"' in resp.text
 
 
+# ── Estoque: ordenação ───────────────────────────────────────────────────
+def test_catalog_default_order_is_menor_preco_sem_parametro():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "ordem-default-caro", modelo="Caro Ordem Default", preco=200000.0)
+    _make_veiculo(loja_id, "ordem-default-barato", modelo="Barato Ordem Default", preco=50000.0)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos")
+    assert resp.status_code == 200
+    assert resp.text.index("Barato Ordem Default") < resp.text.index("Caro Ordem Default")
+
+
+def test_catalog_ordena_por_maior_preco():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "ordem-desc-caro", modelo="Caro Ordem Desc", preco=200000.0)
+    _make_veiculo(loja_id, "ordem-desc-barato", modelo="Barato Ordem Desc", preco=50000.0)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"ordenar": "preco_desc"})
+    assert resp.status_code == 200
+    assert resp.text.index("Caro Ordem Desc") < resp.text.index("Barato Ordem Desc")
+
+
+def test_catalog_ordena_por_ano_mais_novo():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "ordem-ano-velho", modelo="Velho Ordem Ano", ano=2015)
+    _make_veiculo(loja_id, "ordem-ano-novo", modelo="Novo Ordem Ano", ano=2024)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"ordenar": "ano_desc"})
+    assert resp.status_code == 200
+    assert resp.text.index("Novo Ordem Ano") < resp.text.index("Velho Ordem Ano")
+
+
+def test_catalog_ordena_por_menor_km():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "ordem-km-alta", modelo="Alta Ordem Km", quilometragem=90000)
+    _make_veiculo(loja_id, "ordem-km-baixa", modelo="Baixa Ordem Km", quilometragem=5000)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"ordenar": "km_asc"})
+    assert resp.status_code == 200
+    assert resp.text.index("Baixa Ordem Km") < resp.text.index("Alta Ordem Km")
+
+
+def test_catalog_ordenar_desconhecido_cai_pro_default():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "ordem-invalida-caro", modelo="Caro Ordem Invalida", preco=200000.0)
+    _make_veiculo(loja_id, "ordem-invalida-barato", modelo="Barato Ordem Invalida", preco=50000.0)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"ordenar": "valor-que-nao-existe"})
+    assert resp.status_code == 200
+    assert resp.text.index("Barato Ordem Invalida") < resp.text.index("Caro Ordem Invalida")
+
+
+def test_catalog_ordenacao_combina_com_filtro_existente():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "ordem-combo-fiat-caro", marca="Fiat", modelo="Caro Ordem Combo", preco=200000.0)
+    _make_veiculo(loja_id, "ordem-combo-fiat-barato", marca="Fiat", modelo="Barato Ordem Combo", preco=50000.0)
+    _make_veiculo(loja_id, "ordem-combo-toyota", marca="Toyota", modelo="Toyota Ordem Combo", preco=1000.0)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"marca": "Fiat", "ordenar": "preco_desc"})
+    assert resp.status_code == 200
+    assert "Toyota Ordem Combo" not in resp.text
+    assert resp.text.index("Caro Ordem Combo") < resp.text.index("Barato Ordem Combo")
+
+
 # ── Admin: Novidades CRUD ────────────────────────────────────────────────
 def test_admin_novidades_requires_login():
     client = TestClient(app)

@@ -451,19 +451,12 @@ def obter_veiculo_por_slug(db, loja_id: int, slug: str) -> Veiculo | None:
     )
 
 
-def obter_veiculos_publicos(db, loja_id: int) -> list[Veiculo]:
-    """Só veículos disponíveis e publicados — usado pelo catálogo público e (via
-    inventory.py) pelo bot, nunca pela listagem do admin (que precisa ver rascunho/vendido)."""
-    return (
-        db.query(Veiculo)
-        .filter(
-            Veiculo.loja_id == loja_id,
-            Veiculo.status == "Disponivel",
-            Veiculo.status_publicacao == "Publicado",
-        )
-        .order_by(Veiculo.marca.asc(), Veiculo.modelo.asc())
-        .all()
-    )
+ORDENACOES_CATALOGO_PUBLICO = {
+    "preco_asc": lambda: Veiculo.preco.asc(),
+    "preco_desc": lambda: Veiculo.preco.desc(),
+    "ano_desc": lambda: Veiculo.ano.desc(),
+    "km_asc": lambda: Veiculo.quilometragem.asc(),
+}
 
 
 def obter_veiculos_publicos_filtrados(
@@ -475,10 +468,12 @@ def obter_veiculos_publicos_filtrados(
     carroceria: str | None = None,
     cambio: str | None = None,
     combustivel: str | None = None,
+    ordenar: str | None = None,
 ) -> list[Veiculo]:
-    """Mesma base de obter_veiculos_publicos (só disponível+publicado), com filtros pra tela de
-    estoque do catálogo público — mesmo espírito de inventory.py::buscar_veiculos, mas
-    parametrizado por query string em vez de chamado pela IA."""
+    """Só veículos disponíveis e publicados, com filtros opcionais pra tela de estoque do
+    catálogo público — mesmo espírito de inventory.py::buscar_veiculos, mas parametrizado por
+    query string em vez de chamado pela IA. `ordenar` escolhe a ordem (ver
+    ORDENACOES_CATALOGO_PUBLICO) — cai pra "menor preço" se vier vazio/desconhecido."""
     q = db.query(Veiculo).filter(
         Veiculo.loja_id == loja_id,
         Veiculo.status == "Disponivel",
@@ -496,7 +491,8 @@ def obter_veiculos_publicos_filtrados(
         q = q.filter(Veiculo.cambio == cambio)
     if combustivel:
         q = q.filter(Veiculo.combustivel == combustivel)
-    return q.order_by(Veiculo.preco.asc()).all()
+    clausula_ordenacao = ORDENACOES_CATALOGO_PUBLICO.get(ordenar, ORDENACOES_CATALOGO_PUBLICO["preco_asc"])
+    return q.order_by(clausula_ordenacao()).all()
 
 
 def obter_opcoes_filtro_publico(db, loja_id: int) -> dict:
