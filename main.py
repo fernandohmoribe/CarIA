@@ -5,6 +5,7 @@ import base64
 import logging
 import mimetypes
 import os
+from collections import OrderedDict
 from datetime import timedelta
 from pathlib import Path
 
@@ -147,6 +148,10 @@ def _montar_arquivo_imagem(foto: dict) -> dict | None:
     return None
 
 
+SEGUNDOS_ENTRE_FOTOS = 1.2  # rajada de fotos sem pausa também é o tipo de padrão que
+# WhatsApp (conexão não-oficial) associa a bot — um intervalo pequeno já resolve.
+
+
 async def enviar_fotos_veiculo(telefone: str, fotos: dict) -> None:
     url = f"{WAHA_BASE_URL}/api/sendImage"
     veiculo = fotos.get("veiculo") or ""
@@ -159,6 +164,8 @@ async def enviar_fotos_veiculo(telefone: str, fotos: dict) -> None:
             if i == 0 and veiculo:
                 payload["caption"] = f"📸 {veiculo}"
             try:
+                if i > 0:
+                    await asyncio.sleep(SEGUNDOS_ENTRE_FOTOS)
                 resp = await client.post(url, json=payload, headers=WAHA_HEADERS)
                 resp.raise_for_status()
             except Exception as e:
@@ -286,6 +293,23 @@ async def processar_mensagem(telefone: str, texto: str, nome_exibicao: str) -> N
 # Webhook endpoint
 # ---------------------------------------------------------------------------
 
+# WAHA às vezes entrega o mesmo evento mais de uma vez (mesmo "id" de nível
+# raiz, ULID) — sem isso, o bot processa e responde 2x pra mesma mensagem.
+_MAX_EVENTOS_WEBHOOK_VISTOS = 500
+_eventos_webhook_vistos: "OrderedDict[str, None]" = OrderedDict()
+
+
+def _evento_webhook_duplicado(event_id: str) -> bool:
+    if not event_id:
+        return False
+    if event_id in _eventos_webhook_vistos:
+        return True
+    _eventos_webhook_vistos[event_id] = None
+    if len(_eventos_webhook_vistos) > _MAX_EVENTOS_WEBHOOK_VISTOS:
+        _eventos_webhook_vistos.popitem(last=False)
+    return False
+
+
 @app.post("/webhook/whatsapp")
 async def webhook(request: Request):
     try:
@@ -295,6 +319,9 @@ async def webhook(request: Request):
 
     event = data.get("event", "")
     if event != "message":
+        return JSONResponse({"status": "ok"})
+
+    if _evento_webhook_duplicado(data.get("id", "")):
         return JSONResponse({"status": "ok"})
 
     payload = data.get("payload", {})

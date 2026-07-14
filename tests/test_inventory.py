@@ -1,4 +1,4 @@
-from database import SessionLocal, Veiculo, obter_ou_criar_loja
+from database import ImagemVeiculo, SessionLocal, Veiculo, obter_ou_criar_loja
 
 import inventory
 
@@ -94,3 +94,20 @@ def test_detalhes_veiculo_retorna_campos_estruturados_novos():
     assert resultado["blindado"] is True
     assert resultado["aceita_troca"] is True
     assert resultado["garantia_fabrica"] is False
+
+
+def test_listar_fotos_veiculo_limita_quantidade_enviada():
+    """Veículos reais têm até ~19 fotos — mandar todas de uma vez via WhatsApp é rajada
+    demais (visto em produção: WhatsApp aplicou restrição depois de um envio automatizado
+    mal comportado). listar_fotos_veiculo precisa cortar num teto razoável."""
+    db = SessionLocal()
+    loja = _make_loja(db, "Loja Fotos Muitas")
+    veiculo = _make_veiculo(db, loja.id, marca="Volkswagen", modelo="Nivus Muitas Fotos")
+    for i in range(19):
+        db.add(ImagemVeiculo(veiculo_id=veiculo.id, url_imagem=f"http://x/{i}.jpg", ordem=i))
+    db.commit()
+
+    resultado = inventory.listar_fotos_veiculo(loja_id=loja.id, slug=veiculo.slug)
+
+    assert len(resultado["fotos"]) == inventory.MAX_FOTOS_ENVIADAS
+    assert inventory.MAX_FOTOS_ENVIADAS < 19

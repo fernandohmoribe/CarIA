@@ -491,3 +491,48 @@ def test_stale_conversation_expires_and_creates_new_session_for_same_lead():
     historico_conversas = obter_historico_conversa_do_lead(db, lead_id)
     assert len(historico_conversas) == 2  # a antiga (expirada) + a nova sessão
     db.close()
+
+
+def test_webhook_ignores_duplicate_event_id():
+    """WAHA às vezes entrega o mesmo evento 2x (mesmo "id" de nível raiz) — sem dedup, o
+    bot processa e responde duas vezes pra mesma mensagem (visto em produção)."""
+    import time
+
+    from fastapi.testclient import TestClient
+    import main
+    from database import obter_loja_padrao
+
+    db = SessionLocal()
+    loja = obter_loja_padrao(db) or _make_loja(db, "Loja Dedup")
+    loja_id = loja.id
+    telefone = "5544900000111@c.us"
+    lead = Lead(loja_id=loja_id, numero_telefone=telefone, status="novo")
+    db.add(lead)
+    db.commit()
+    db.close()
+
+    payload = {
+        "id": "evt_01teste_duplicado_mesmo_id",
+        "event": "message",
+        "payload": {
+            "fromMe": False,
+            "from": telefone,
+            "hasMedia": False,
+            "body": "oi, quero ver um carro",
+            "_data": {"notifyName": "Cliente Duplicado"},
+        },
+    }
+
+    with patch.object(main, "obter_resposta_ia") as mock_ai, \
+         patch.object(main, "enviar_mensagem", new=AsyncMock()), \
+         patch.object(main, "definir_digitando", new=AsyncMock()):
+        mock_ai.return_value = ("resposta única", None, None)
+        client = TestClient(main.app)
+
+        resp1 = client.post("/webhook/whatsapp", json=payload)
+        resp2 = client.post("/webhook/whatsapp", json=payload)  # mesma entrega duplicada
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+        time.sleep(0.3)
+
+        mock_ai.assert_called_once()  # só processou a primeira vez, apesar de 2 POSTs

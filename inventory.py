@@ -178,6 +178,12 @@ def detalhes_veiculo(loja_id: int, slug: str) -> dict:
         db.close()
 
 
+# Veículos reais têm ~12 fotos em média (até 19) — mandar todas de uma vez em rajada, sem
+# pausa, é o tipo de padrão que o WhatsApp (via conexão não-oficial) associa a comportamento
+# automatizado. Limita a uma amostra generosa o bastante pra dar uma boa impressão do carro.
+MAX_FOTOS_ENVIADAS = 8
+
+
 def listar_fotos_veiculo(loja_id: int, slug: str) -> dict:
     """Retorna os arquivos de foto do veículo (caminho local em media/, com URL remota
     como fallback) pra envio real via WhatsApp — nunca pra exibir como link em texto."""
@@ -190,7 +196,10 @@ def listar_fotos_veiculo(loja_id: int, slug: str) -> dict:
             return {"erro": "Esse veículo não tem fotos cadastradas.", "fotos": []}
         return {
             "veiculo": f"{veiculo.marca} {veiculo.modelo} {veiculo.versao or ''}".strip(),
-            "fotos": [{"caminho_local": img.caminho_local, "url": img.url_imagem} for img in veiculo.imagens],
+            "fotos": [
+                {"caminho_local": img.caminho_local, "url": img.url_imagem}
+                for img in veiculo.imagens[:MAX_FOTOS_ENVIADAS]
+            ],
         }
     finally:
         db.close()
