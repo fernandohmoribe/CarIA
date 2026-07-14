@@ -27,7 +27,6 @@ from database import (
     agora_utc,
     criar_lead_apos_encerramento,
     encerrar_conversa,
-    lead_para_dict,
     obter_conversa,
     obter_conversa_atualizada_em,
     obter_lead_mais_recente,
@@ -38,7 +37,6 @@ from database import (
 from dealership_config import (
     DEALERSHIP_NAME,
     DEALERSHIP_PHONE,
-    DEALERSHIP_STAFF_PHONE,
     TEST_PHONES,
     WAHA_API_KEY,
     WAHA_BASE_URL,
@@ -198,43 +196,6 @@ async def enviar_fotos_veiculo(telefone: str, fotos: dict) -> None:
                 logger.warning(f"Falha ao enviar foto {i + 1} pra {telefone}: {e}")
 
 
-async def notificar_equipe(lead: dict, telefone: str) -> None:
-    if not DEALERSHIP_STAFF_PHONE:
-        return
-
-    prioridade_emoji = "🔥 LEAD QUENTE" if lead.get("prioridade") == "quente" else "🔔 Novo lead"
-    linhas = [f"{prioridade_emoji} — {DEALERSHIP_NAME}", ""]
-    linhas.append(f"👤 Nome: {lead.get('nome') or '—'}")
-    linhas.append(f"📱 WhatsApp: {telefone}")
-    linhas.append(f"📞 Telefone: {lead.get('telefone') or '—'}")
-    linhas.append(f"✉️ Email: {lead.get('email') or '—'}")
-    if lead.get("veiculo_interesse"):
-        linhas.append(f"🚘 Interesse: {lead['veiculo_interesse']}")
-    if lead.get("forma_pagamento"):
-        linhas.append(f"💳 Pagamento: {lead['forma_pagamento']}")
-    if lead.get("tem_troca"):
-        linhas.append(f"🔄 Troca: {lead.get('veiculo_troca_desc') or 'sim'}")
-    if lead.get("orcamento_aproximado"):
-        linhas.append(f"💰 Orçamento: {lead['orcamento_aproximado']}")
-    if lead.get("urgencia_compra"):
-        linhas.append(f"⏱️ Urgência: {lead['urgencia_compra']}")
-    if lead.get("uso_pretendido"):
-        linhas.append(f"🎯 Uso pretendido: {lead['uso_pretendido']}")
-    if lead.get("preferencia_contato"):
-        linhas.append(f"📅 Preferência de contato: {lead['preferencia_contato']}")
-    linhas.append(f"📊 Status: {lead.get('status', 'novo')}")
-    if lead.get("resumo_executivo"):
-        linhas.append("")
-        linhas.append(f"📝 Resumo: {lead['resumo_executivo']}")
-    linhas.append("")
-    linhas.append("Ver leads: http://localhost:3000/admin/leads")
-
-    try:
-        await enviar_mensagem(DEALERSHIP_STAFF_PHONE, "\n".join(linhas))
-    except Exception as e:
-        logger.warning(f"Não foi possível notificar o vendedor: {e}")
-
-
 async def processar_contato_lead_fechado(telefone: str, loja_id: int, status_anterior: str) -> None:
     """Cliente cujo lead mais recente está fechado (ver STATUS_LEAD_FECHADOS) mandou mensagem
     de novo. O bot não reengaja sozinho — manda só uma cortesia e cria um lead novo pra um vendedor
@@ -242,13 +203,11 @@ async def processar_contato_lead_fechado(telefone: str, loja_id: int, status_ant
     db = SessionLocal()
     try:
         lead = criar_lead_apos_encerramento(db, loja_id, telefone, status_anterior)
-        dict_lead = lead_para_dict(lead)
     finally:
         db.close()
 
     logger.info(f"[REENGAJAMENTO] {telefone} voltou após lead {status_anterior} — novo lead #{lead.id}")
     await enviar_mensagem(telefone, MENSAGEM_LEAD_FECHADO)
-    await notificar_equipe(dict_lead, telefone)
 
 
 # ---------------------------------------------------------------------------
@@ -299,14 +258,12 @@ async def processar_mensagem(telefone: str, texto: str, nome_exibicao: str) -> N
     try:
         # asyncio.to_thread só existe a partir do Python 3.9 — este ambiente roda 3.8.
         loop = asyncio.get_event_loop()
-        texto_ia, lead_para_notificar, fotos_para_enviar = await loop.run_in_executor(
+        texto_ia, _lead_para_notificar, fotos_para_enviar = await loop.run_in_executor(
             None, _processar_sincrono, telefone, texto, nome_exibicao
         )
         await enviar_mensagem(telefone, texto_ia)
         if fotos_para_enviar:
             await enviar_fotos_veiculo(telefone, fotos_para_enviar)
-        if lead_para_notificar:
-            await notificar_equipe(lead_para_notificar, telefone)
     except Exception as exc:
         logger.error(f"Erro ao processar mensagem de {telefone}: {exc}", exc_info=True)
         try:

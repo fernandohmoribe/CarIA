@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from dealership_config import DEALERSHIP_STAFF_PHONE
 from database import (
     STATUS_LEAD_FECHADOS,
     Lead,
@@ -333,6 +334,66 @@ def test_webhook_ai_called_only_for_non_silenced_statuses(status):
             mock_ai.assert_not_called()
         else:
             mock_ai.assert_called_once()
+
+
+def test_processar_mensagem_nunca_manda_whatsapp_pro_vendedor():
+    """O bot já mandou mensagem de "novo lead"/"lead quente" pro WhatsApp do vendedor
+    (DEALERSHIP_STAFF_PHONE) toda vez que um lead era criado/atualizado — isso é justamente
+    o tipo de "reach out" pra um contato novo que fez o WhatsApp (conexão não-oficial)
+    restringir e derrubar a sessão em produção. Removido de propósito — o vendedor acompanha
+    lead novo só pelo quadro kanban do admin (/admin/leads), nunca mais via mensagem
+    automática. Testa processar_mensagem direto (não via webhook fire-and-forget, que roda
+    em asyncio.create_task e não tem garantia de terminar a tempo fora do event loop real
+    da aplicação) — este teste tranca esse comportamento pra não voltar sem querer."""
+    import asyncio
+
+    import main
+
+    assert DEALERSHIP_STAFF_PHONE, "precisa estar configurado no .env pro teste valer alguma coisa"
+
+    telefone = "5544900000112@c.us"
+
+    with patch.object(main, "obter_resposta_ia") as mock_ai, \
+         patch.object(main, "enviar_mensagem", new=AsyncMock()) as mock_send, \
+         patch.object(main, "definir_digitando", new=AsyncMock()):
+        # simula a IA criando um lead novo/quente (o que antes disparava notificar_equipe)
+        mock_ai.return_value = (
+            "Anotado! Já vou te ajudar 🎯",
+            {"nome": None, "prioridade": "quente", "status": "novo"},
+            None,
+        )
+        asyncio.run(main.processar_mensagem(telefone, "quero um carro urgente, tenho um Corolla pra trocar", "Cliente Lead Quente"))
+
+    telefones_notificados = [chamada.args[0] for chamada in mock_send.call_args_list]
+    assert DEALERSHIP_STAFF_PHONE not in telefones_notificados
+    assert telefones_notificados == [telefone]  # só respondeu o próprio cliente
+
+
+def test_processar_contato_lead_fechado_nunca_manda_whatsapp_pro_vendedor():
+    """Mesma trava do teste acima, mas pro outro call site que existia (reengajamento de
+    lead fechado) — também não pode mais mandar WhatsApp pro vendedor."""
+    import asyncio
+
+    import main
+    from database import obter_loja_padrao
+
+    assert DEALERSHIP_STAFF_PHONE, "precisa estar configurado no .env pro teste valer alguma coisa"
+
+    db = SessionLocal()
+    loja = obter_loja_padrao(db) or _make_loja(db, "Loja Reengajamento Sem Notificar")
+    loja_id = loja.id
+    telefone = "5544900000113@c.us"
+    lead = Lead(loja_id=loja_id, numero_telefone=telefone, status="perdido")
+    db.add(lead)
+    db.commit()
+    db.close()
+
+    with patch.object(main, "enviar_mensagem", new=AsyncMock()) as mock_send:
+        asyncio.run(main.processar_contato_lead_fechado(telefone, loja_id, "perdido"))
+
+    telefones_notificados = [chamada.args[0] for chamada in mock_send.call_args_list]
+    assert DEALERSHIP_STAFF_PHONE not in telefones_notificados
+    assert telefones_notificados == [telefone]  # só a cortesia pro próprio cliente
 
 
 def test_conversation_history_scoped_to_lead_not_mixed_across_reopened_leads():
