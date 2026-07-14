@@ -138,6 +138,13 @@ def buscar_veiculos(
             # Benz" (espaço) cadastrada no banco e o AND entre palavras zera o resultado.
             palavras = [p for p in re.split(r"\W+", termo) if p]
             for palavra in palavras:
+                # Ano (ex: "Cruze LT 2018") não aparece em marca/modelo/versão — é um jeito bem
+                # natural do cliente descrever o carro, mas sem isso a palavra "2018" nunca bate
+                # em nenhum dos três campos, e como todas as palavras precisam bater (AND), o
+                # resultado zerava mesmo o veículo existindo (bug real visto em produção).
+                if re.fullmatch(r"(19|20)\d{2}", palavra):
+                    q = q.filter(Veiculo.ano == int(palavra))
+                    continue
                 like = f"%{palavra}%"
                 q = q.filter(
                     or_(

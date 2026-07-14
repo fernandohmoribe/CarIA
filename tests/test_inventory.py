@@ -34,6 +34,31 @@ def test_buscar_veiculos_termo_com_hifen_na_marca_encontra_veiculo():
     assert len(resultado) == 1
 
 
+def test_buscar_veiculos_termo_com_ano_encontra_veiculo():
+    """Reproduz bug real visto em produção: cliente perguntou por "Cruze 1.4 Turbo LT 2018" e
+    o bot disse que não tinha o carro nem fotos — mas o veículo existia no estoque. Causa: ano
+    não aparece em marca/modelo/versão, e como cada palavra do termo precisa bater em algum
+    desses três campos (AND), incluir o ano no termo zerava o resultado sempre."""
+    db = SessionLocal()
+    loja = _make_loja(db, "Loja Busca Com Ano")
+    _make_veiculo(db, loja.id, marca="Chevrolet", modelo="Cruze", versao="1.4 Turbo Lt 16V Flex 4P Automático", ano=2018)
+
+    resultado = inventory.buscar_veiculos(loja_id=loja.id, termo="Cruze 1.4 Turbo LT 2018")
+
+    assert isinstance(resultado, list)
+    assert len(resultado) == 1
+
+
+def test_buscar_veiculos_termo_com_ano_que_nao_bate_retorna_vazio():
+    db = SessionLocal()
+    loja = _make_loja(db, "Loja Busca Ano Errado")
+    _make_veiculo(db, loja.id, marca="Chevrolet", modelo="Cruze", ano=2018)
+
+    resultado = inventory.buscar_veiculos(loja_id=loja.id, termo="Cruze 2019")
+
+    assert resultado == {"resultado": "Nenhum veículo encontrado no nosso estoque com esses filtros."}
+
+
 def test_buscar_veiculos_termo_sem_correspondencia_retorna_vazio():
     db = SessionLocal()
     loja = _make_loja(db, "Loja Inventory Vazia")
