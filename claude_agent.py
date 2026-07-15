@@ -14,6 +14,13 @@ MAX_TOKENS = 1300
 MAX_HISTORY_MESSAGES = 20
 MAX_TOOL_ITERATIONS = 6
 
+# A Anthropic rejeita (400) qualquer mensagem futura na mesma conversa se um bloco de texto
+# vazio for salvo no histórico — visto em produção: a resposta final saiu "" (causa exata não
+# confirmada), ficou salva assim, e todas as mensagens seguintes desse cliente passaram a falhar
+# com o mesmo erro 400 até a conversa expirar/reiniciar. Nunca deixa um texto vazio nem ir pro
+# cliente nem ser persistido — corta o problema na raiz independente da causa.
+MENSAGEM_RESPOSTA_VAZIA = "Desculpa, tive uma falha ao montar a resposta agora — pode repetir sua pergunta? 🙏"
+
 DIAS_SEMANA = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
 
 PRICE_INPUT = 1.00
@@ -246,7 +253,7 @@ def obter_resposta_ia(
 
         if response.stop_reason != "tool_use":
             texto_final = "".join(block.text for block in response.content if block.type == "text").strip()
-            return texto_final, lead_para_notificar, fotos_para_enviar
+            return texto_final or MENSAGEM_RESPOSTA_VAZIA, lead_para_notificar, fotos_para_enviar
 
         # Turno intermediário (ainda vai chamar mais tool): o texto que vem junto ("vou
         # verificar...", "aqui está a ficha completa:") é descartado de propósito — só o texto
@@ -280,7 +287,7 @@ def obter_resposta_ia(
         messages=mensagens_api,
     )
     texto_final = "".join(block.text for block in response.content if block.type == "text").strip()
-    return texto_final, lead_para_notificar, fotos_para_enviar
+    return texto_final or MENSAGEM_RESPOSTA_VAZIA, lead_para_notificar, fotos_para_enviar
 
 
 def _registrar_uso(usage, telefone: str):
