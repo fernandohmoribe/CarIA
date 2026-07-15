@@ -2,10 +2,11 @@ version: '3.8'
 
 services:
   waha:
-    # Imagem :noweb — motor NOWEB (sem Chromium/Puppeteer embutido), bem mais leve em RAM/CPU
-    # que a imagem padrão (motor WEBJS) — decisão consciente pro servidor compartilhado com
-    # outras 2 aplicações (joytable, nutriai-app) e pouca folga de recurso.
-    image: devlikeapro/waha:noweb
+    # Imagem :gows — motor GOWS (Golang, sem Chromium/Puppeteer embutido, mesmo tamanho da
+    # :noweb ~719MB) — experimentando trocar do NOWEB pro GOWS na tentativa de melhorar
+    # estabilidade da sessão (restrições "reachout timelock" recorrentes do WhatsApp). Não há
+    # garantia documentada de que resolve — se não ajudar, reverter pra devlikeapro/waha:noweb.
+    image: devlikeapro/waha:gows
     container_name: waha
     restart: unless-stopped
     ports:
@@ -24,6 +25,7 @@ services:
       - WAHA_API_KEY=${WAHA_API_KEY}
       - WAHA_DASHBOARD_PASSWORD=${WAHA_DASHBOARD_PASSWORD}
       - WAHA_DASHBOARD_USERNAME=admin
+      - WHATSAPP_DEFAULT_ENGINE=GOWS
       # Porta 3001 é a do CarIA (uvicorn) — porta 3000 já é do nutriai-app, nesse mesmo host.
       - WHATSAPP_HOOK_URL=http://host.docker.internal:3001/webhook/whatsapp
       - WHATSAPP_HOOK_EVENTS=message
