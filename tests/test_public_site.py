@@ -123,6 +123,30 @@ def test_sobre_nos_page_loads():
     assert "Sobre a" in resp.text
 
 
+# ── Ícones (substituem 📞📍💬 por SVG, resto do emoji do site fica intocado) ─────
+def test_home_whatsapp_button_uses_svg_not_emoji():
+    client = TestClient(app)
+    resp = client.get("/")
+    assert "💬" not in resp.text
+    assert "<svg" in resp.text
+    assert "☰" in resp.text  # emoji fora do escopo continua intocado
+
+
+def test_contato_page_uses_svg_icons_not_emoji():
+    loja_id = _loja_id()
+    client = TestClient(app)
+    resp = client.get("/contato")
+    assert "📞" not in resp.text
+    assert "📍" not in resp.text
+    assert "<svg" in resp.text
+
+
+def test_sobre_nos_page_uses_svg_pin_not_emoji():
+    client = TestClient(app)
+    resp = client.get("/sobre-nos")
+    assert "📍" not in resp.text
+
+
 # ── Contato ──────────────────────────────────────────────────────────────
 def test_contato_page_loads():
     client = TestClient(app)
@@ -301,6 +325,91 @@ def test_catalog_filter_dropdowns_populated_from_real_stock():
     assert '<option value="Sedan"' in resp.text
     assert '<option value="Automático"' in resp.text
     assert '<option value="Gasolina"' in resp.text
+
+
+def test_catalog_cor_dropdown_populated_from_real_stock():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-opcoes-cor", modelo="Onix Filtro Cor", cor="Prata")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos")
+    assert '<option value="Prata"' in resp.text
+
+
+def test_catalog_filter_by_busca_matches_marca_modelo_versao_ano():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "busca-corolla-2020", marca="Toyota", modelo="Corolla Busca Composta", ano=2020)
+    _make_veiculo(loja_id, "busca-corolla-2015", marca="Toyota", modelo="Corolla Busca Composta Antigo", ano=2015)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"busca": "corolla 2020"})
+    assert "Corolla Busca Composta" in resp.text
+    assert "Corolla Busca Composta Antigo" not in resp.text
+
+
+def test_catalog_filter_by_busca_single_token_matches_any_field():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "busca-token-unico", marca="Renault", modelo="Sandero Busca Token Unico")
+    _make_veiculo(loja_id, "busca-token-outro", marca="Fiat", modelo="Mobi Busca Token Outro")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"busca": "renault"})
+    assert "Sandero Busca Token Unico" in resp.text
+    assert "Mobi Busca Token Outro" not in resp.text
+
+
+def test_catalog_busca_with_no_matches_shows_empty_state():
+    _loja_id()
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"busca": "termoquenaobatenenhumveiculo"})
+    assert "Nenhum veículo encontrado com esses filtros." in resp.text
+
+
+def test_catalog_filter_by_ano_range():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-ano-novo", modelo="Novo Filtro Ano", ano=2023)
+    _make_veiculo(loja_id, "filtro-ano-velho", modelo="Velho Filtro Ano", ano=2010)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"ano_min": "2018"})
+    assert "Novo Filtro Ano" in resp.text
+    assert "Velho Filtro Ano" not in resp.text
+
+    resp = client.get("/veiculos", params={"ano_max": "2018"})
+    assert "Velho Filtro Ano" in resp.text
+    assert "Novo Filtro Ano" not in resp.text
+
+
+def test_catalog_filter_by_cor():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-cor-prata", modelo="Prata Filtro Cor", cor="Prata")
+    _make_veiculo(loja_id, "filtro-cor-preto", modelo="Preto Filtro Cor", cor="Preto")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"cor": "Prata"})
+    assert "Prata Filtro Cor" in resp.text
+    assert "Preto Filtro Cor" not in resp.text
+
+
+def test_catalog_filter_by_km_max():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-km-baixo", modelo="Baixo Filtro Km", quilometragem=10000)
+    _make_veiculo(loja_id, "filtro-km-alto", modelo="Alto Filtro Km", quilometragem=90000)
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"km_max": "20000"})
+    assert "Baixo Filtro Km" in resp.text
+    assert "Alto Filtro Km" not in resp.text
+
+
+def test_catalog_filter_with_non_numeric_ano_and_km_does_not_422():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "filtro-ano-km-invalido", modelo="Ano Km Invalido Sem Crash")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos", params={"ano_min": "abc", "km_max": "xyz"})
+    assert resp.status_code == 200
+    assert "Ano Km Invalido Sem Crash" in resp.text
 
 
 # ── Estoque: ordenação ───────────────────────────────────────────────────

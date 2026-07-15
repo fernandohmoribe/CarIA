@@ -17,7 +17,10 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    cast,
     create_engine,
+    func,
+    or_,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
@@ -469,6 +472,11 @@ def obter_veiculos_publicos_filtrados(
     cambio: str | None = None,
     combustivel: str | None = None,
     ordenar: str | None = None,
+    busca: str | None = None,
+    ano_min: int | None = None,
+    ano_max: int | None = None,
+    cor: str | None = None,
+    km_max: int | None = None,
 ) -> list[Veiculo]:
     """Só veículos disponíveis e publicados, com filtros opcionais pra tela de estoque do
     catálogo público — mesmo espírito de inventory.py::buscar_veiculos, mas parametrizado por
@@ -491,6 +499,25 @@ def obter_veiculos_publicos_filtrados(
         q = q.filter(Veiculo.cambio == cambio)
     if combustivel:
         q = q.filter(Veiculo.combustivel == combustivel)
+    if cor:
+        q = q.filter(Veiculo.cor == cor)
+    if ano_min is not None:
+        q = q.filter(Veiculo.ano >= ano_min)
+    if ano_max is not None:
+        q = q.filter(Veiculo.ano <= ano_max)
+    if km_max is not None:
+        q = q.filter(Veiculo.quilometragem <= km_max)
+    if busca:
+        for token in busca.split():
+            padrao = f"%{token}%"
+            q = q.filter(
+                or_(
+                    Veiculo.marca.ilike(padrao),
+                    Veiculo.modelo.ilike(padrao),
+                    Veiculo.versao.ilike(padrao),
+                    cast(Veiculo.ano, String).ilike(padrao),
+                )
+            )
     clausula_ordenacao = ORDENACOES_CATALOGO_PUBLICO.get(ordenar, ORDENACOES_CATALOGO_PUBLICO["preco_asc"])
     return q.order_by(clausula_ordenacao()).all()
 
@@ -508,6 +535,7 @@ def obter_opcoes_filtro_publico(db, loja_id: int) -> dict:
         "carrocerias": sorted({v[0] for v in base.with_entities(Veiculo.carroceria).distinct() if v[0]}),
         "cambios": sorted({v[0] for v in base.with_entities(Veiculo.cambio).distinct() if v[0]}),
         "combustiveis": sorted({v[0] for v in base.with_entities(Veiculo.combustivel).distinct() if v[0]}),
+        "cores": sorted({v[0] for v in base.with_entities(Veiculo.cor).distinct() if v[0]}),
     }
 
 
@@ -525,6 +553,54 @@ def obter_veiculo_publico_por_slug(db, loja_id: int, slug: str) -> Veiculo | Non
         )
         .first()
     )
+
+
+def obter_veiculos_publicos_por_slugs(db, loja_id: int, slugs: list[str]) -> list[Veiculo]:
+    """Mesmo filtro disponível+publicado — usado pela API de favoritos, que recebe uma lista
+    de slugs vinda do localStorage do navegador (não confiar em nada que vem do cliente)."""
+    if not slugs:
+        return []
+    return (
+        db.query(Veiculo)
+        .filter(
+            Veiculo.loja_id == loja_id,
+            Veiculo.slug.in_(slugs),
+            Veiculo.status == "Disponivel",
+            Veiculo.status_publicacao == "Publicado",
+        )
+        .all()
+    )
+
+
+def obter_veiculos_parecidos(db, loja_id: int, veiculo: Veiculo, limite: int = 4) -> list[Veiculo]:
+    """Mesma marca primeiro (ordenado por preço), completa com veículos de preço próximo
+    (±20%) se faltar — só disponível+publicado, exclui o próprio veículo. Usado na ficha
+    pública pra sugerir alternativas sem perder o cliente se ele não gostar desse."""
+    base = db.query(Veiculo).filter(
+        Veiculo.loja_id == loja_id,
+        Veiculo.status == "Disponivel",
+        Veiculo.status_publicacao == "Publicado",
+        Veiculo.id != veiculo.id,
+    )
+    mesma_marca = base.filter(Veiculo.marca == veiculo.marca).order_by(Veiculo.preco.asc()).limit(limite).all()
+    if len(mesma_marca) >= limite or not veiculo.preco:
+        return mesma_marca
+
+    faltam = limite - len(mesma_marca)
+    ja_incluidos = {v.id for v in mesma_marca}
+    preco_min = veiculo.preco * 0.8
+    preco_max = veiculo.preco * 1.2
+    complemento = (
+        base.filter(
+            ~Veiculo.id.in_(ja_incluidos),
+            Veiculo.preco >= preco_min,
+            Veiculo.preco <= preco_max,
+        )
+        .order_by(func.abs(Veiculo.preco - veiculo.preco))
+        .limit(faltam)
+        .all()
+    )
+    return mesma_marca + complemento
 
 
 # ── Conversas ────────────────────────────────────────────────────────────

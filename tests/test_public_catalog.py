@@ -143,3 +143,107 @@ def test_catalog_uses_real_logo_asset():
     resp = client.get("/static/logo.png")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/png"
+
+
+# ── Veículos parecidos ───────────────────────────────────────────────────
+def test_similar_vehicles_prefers_same_brand():
+    # marca fictícia exclusiva desse teste — evita colisão com "Toyota"/"Fiat" usados como
+    # default em outros testes que compartilham o mesmo banco SQLite da suíte inteira, o que
+    # inflaria a cota de "mesma marca" com veículos de testes não relacionados.
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "parecido-base", "MarcaParecidoBrand", "Parecido Base")
+    for i in range(4):
+        _make_veiculo(loja_id, f"parecido-mesma-marca-{i}", "MarcaParecidoBrand", f"Parecido Mesma Marca {i}")
+    _make_veiculo(loja_id, "parecido-outra-marca", "MarcaParecidoBrandOutra", "Parecido Outra Marca")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos/parecido-base")
+    assert resp.status_code == 200
+    assert "Veículos parecidos" in resp.text
+    for i in range(4):
+        assert f"Parecido Mesma Marca {i}" in resp.text
+    assert "Parecido Outra Marca" not in resp.text
+
+
+def test_similar_vehicles_falls_back_to_price_proximity_when_brand_thin():
+    # marca fictícia exclusiva desse teste, pelo mesmo motivo do teste acima — a base precisa
+    # ter zero concorrentes de mesma marca no banco compartilhado pra forçar o fallback de
+    # preço a acontecer de forma determinística.
+    loja_id = _loja_id()
+    db = SessionLocal()
+    base = Veiculo(
+        loja_id=loja_id, slug="parecido-preco-base", marca="MarcaParecidoPrecoBase", modelo="Parecido Preco Base",
+        ano=2022, preco=100000.0, status="Disponivel", status_publicacao="Publicado",
+    )
+    perto = Veiculo(
+        loja_id=loja_id, slug="parecido-preco-perto", marca="MarcaParecidoPrecoPerto", modelo="Parecido Preco Perto",
+        ano=2022, preco=105000.0, status="Disponivel", status_publicacao="Publicado",
+    )
+    longe = Veiculo(
+        loja_id=loja_id, slug="parecido-preco-longe", marca="MarcaParecidoPrecoLonge", modelo="Parecido Preco Longe",
+        ano=2022, preco=30000.0, status="Disponivel", status_publicacao="Publicado",
+    )
+    db.add_all([base, perto, longe])
+    db.commit()
+    db.close()
+
+    client = TestClient(app)
+    resp = client.get("/veiculos/parecido-preco-base")
+    assert "Parecido Preco Perto" in resp.text
+    assert "Parecido Preco Longe" not in resp.text
+
+
+def test_similar_vehicles_excludes_hidden_and_sold():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "parecido-exclui-base", "MarcaParecidoExclui", "Parecido Exclui Base")
+    _make_veiculo(loja_id, "parecido-exclui-vendido", "MarcaParecidoExclui", "Parecido Exclui Vendido", status="Vendido")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos/parecido-exclui-base")
+    assert "Parecido Exclui Vendido" not in resp.text
+
+
+def test_catalog_card_has_favorite_button_with_slug_attribute():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "favorito-catalogo-slug", "Fiat", "Mobi Favorito Catalogo")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos")
+    assert 'data-favorito-slug="favorito-catalogo-slug"' in resp.text
+
+
+# ── Zoom/lightbox nas fotos ──────────────────────────────────────────────
+def test_vehicle_detail_page_includes_lightbox_dialog():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "lightbox-ficha", "Fiat", "Mobi Lightbox Ficha")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos/lightbox-ficha")
+    assert '<dialog id="foto-lightbox"' in resp.text
+    assert "abrirLightbox(" in resp.text
+
+
+# ── Botão de compartilhar ────────────────────────────────────────────────
+def test_vehicle_detail_page_has_whatsapp_share_link_with_vehicle_url():
+    from urllib.parse import quote
+
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "compartilhar-ficha", "Fiat", "Mobi Compartilhar Ficha")
+
+    client = TestClient(app)
+    resp = client.get("/veiculos/compartilhar-ficha")
+    assert "wa.me" in resp.text
+    assert quote("/veiculos/compartilhar-ficha") in resp.text
+    assert "Compartilhar" in resp.text
+
+
+# ── Simulador de financiamento ───────────────────────────────────────────
+def test_vehicle_detail_page_includes_financing_simulator_markup():
+    loja_id = _loja_id()
+    _make_veiculo(loja_id, "simulador-ficha", "Fiat", "Mobi Simulador Ficha")  # preco default 90000.0
+
+    client = TestClient(app)
+    resp = client.get("/veiculos/simulador-ficha")
+    assert "sim-resultado" in resp.text
+    assert "SIM_TAXA_MENSAL" in resp.text
+    assert "SIM_PRECO_VEICULO = 90000.0" in resp.text

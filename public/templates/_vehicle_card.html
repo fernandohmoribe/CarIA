@@ -1,0 +1,16 @@
+<a href="/veiculos/{{ v.slug }}" class="relative block bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">
+    <button type="button" data-favorito-slug="{{ v.slug }}"
+            onclick="event.preventDefault(); event.stopPropagation(); alternarFavorito('{{ v.slug }}', this)"
+            aria-label="Favoritar" aria-pressed="false"
+            class="absolute top-2 right-2 z-10 bg-white/90 rounded-full w-9 h-9 flex items-center justify-center shadow">
+        {% include "_icons/heart.html" %}
+    </button>
+    <img src="{{ imagem_src(v.caminho_capa, v.url_imagem_capa, 400, 300) }}" loading="lazy"
+         class="w-full h-44 object-cover bg-zinc-100" alt="{{ v.marca }} {{ v.modelo }}">
+    <div class="p-4">
+        <h3 class="font-semibold text-zinc-900">{{ v.marca }} {{ v.modelo }}</h3>
+        <p class="text-zinc-500 text-xs mb-2">{{ v.versao or "" }}</p>
+        <p class="text-brand font-bold text-lg">R$ {{ v.preco|brl }}</p>
+        <p class="text-zinc-500 text-xs mt-1">{{ v.ano }} · {{ "{:,}".format(v.quilometragem or 0).replace(",", ".") }} km{% if v.cambio %} · {{ v.cambio }}{% endif %}</p>
+    </div>
+</a>

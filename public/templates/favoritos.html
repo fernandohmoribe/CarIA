@@ -1,0 +1,43 @@
+{% extends "base_public.html" %}
+{% block title %}Favoritos{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold text-zinc-900 mb-6">Meus favoritos</h1>
+
+<div id="favoritos-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+<p id="favoritos-vazio" class="text-zinc-500 text-sm text-center py-10 hidden">Você ainda não favoritou nenhum veículo.</p>
+
+<script>
+function _cardFavoritoHtml(v) {
+    const kmFormatado = (v.quilometragem || 0).toLocaleString('pt-BR');
+    const precoFormatado = (v.preco || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    return '<a href="/veiculos/' + v.slug + '" class="relative block bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">' +
+        '<button type="button" data-favorito-slug="' + v.slug + '" ' +
+        'onclick="event.stopPropagation(); event.preventDefault(); alternarFavorito(\'' + v.slug + '\', this); this.closest(\'a\').remove();" ' +
+        'aria-label="Remover dos favoritos" class="absolute top-2 right-2 z-10 bg-white/90 rounded-full w-9 h-9 flex items-center justify-center shadow is-favorito">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
+        '</button>' +
+        '<img src="' + v.imagem + '" loading="lazy" class="w-full h-44 object-cover bg-zinc-100" alt="' + v.marca + ' ' + v.modelo + '">' +
+        '<div class="p-4">' +
+        '<h3 class="font-semibold text-zinc-900">' + v.marca + ' ' + v.modelo + '</h3>' +
+        '<p class="text-zinc-500 text-xs mb-2">' + (v.versao || '') + '</p>' +
+        '<p class="text-brand font-bold text-lg">R$ ' + precoFormatado + '</p>' +
+        '<p class="text-zinc-500 text-xs mt-1">' + v.ano + ' · ' + kmFormatado + ' km</p>' +
+        '</div></a>';
+}
+
+document.addEventListener('DOMContentLoaded', async function () {
+    const slugs = obterFavoritos();
+    const grid = document.getElementById('favoritos-grid');
+    const vazio = document.getElementById('favoritos-vazio');
+    if (!slugs.length) { vazio.classList.remove('hidden'); return; }
+
+    const resp = await fetch('/api/favoritos?slugs=' + encodeURIComponent(slugs.join(',')));
+    const veiculos = await resp.json();
+    if (!veiculos.length) { vazio.classList.remove('hidden'); return; }
+    veiculos.forEach(function (v) {
+        grid.insertAdjacentHTML('beforeend', _cardFavoritoHtml(v));
+    });
+});
+</script>
+{% endblock %}

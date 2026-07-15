@@ -10,7 +10,9 @@
 </div>
 
 <form method="get" action="/veiculos" id="filtro-estoque-form" class="bg-white border border-zinc-200 rounded-2xl p-4 mb-6 shadow-sm">
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <input name="busca" type="text" placeholder="Buscar por marca, modelo, versão, ano... (ex: corolla 2020)"
+           value="{{ filtros.busca }}" class="w-full bg-zinc-50 border border-zinc-300 rounded-lg px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 mb-3">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <select name="marca" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
             <option value="">Marca</option>
             {% for m in opcoes.marcas %}
@@ -35,10 +37,22 @@
             <option value="{{ c }}" {% if filtros.combustivel == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
         </select>
+        <select name="cor" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
+            <option value="">Cor</option>
+            {% for c in opcoes.cores %}
+            <option value="{{ c }}" {% if filtros.cor == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+        </select>
         <input name="preco_min" type="text" inputmode="decimal" placeholder="Preço mín." value="{{ filtros.preco_min|brl if filtros.preco_min is not none else '' }}"
                oninput="maskPreco(this)" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
         <input name="preco_max" type="text" inputmode="decimal" placeholder="Preço máx." value="{{ filtros.preco_max|brl if filtros.preco_max is not none else '' }}"
                oninput="maskPreco(this)" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
+        <input name="ano_min" type="number" placeholder="Ano mín." value="{{ filtros.ano_min if filtros.ano_min is not none else '' }}"
+               class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
+        <input name="ano_max" type="number" placeholder="Ano máx." value="{{ filtros.ano_max if filtros.ano_max is not none else '' }}"
+               class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
+        <input name="km_max" type="number" min="0" step="1000" placeholder="KM máx." value="{{ filtros.km_max if filtros.km_max is not none else '' }}"
+               class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900 placeholder-zinc-400">
         <select name="ordenar" onchange="this.form.submit()" class="bg-zinc-50 border border-zinc-300 rounded-lg px-2 py-2 text-sm text-zinc-900">
             <option value="preco_asc" {% if filtros.ordenar == "preco_asc" %}selected{% endif %}>Menor preço</option>
             <option value="preco_desc" {% if filtros.ordenar == "preco_desc" %}selected{% endif %}>Maior preço</option>
@@ -56,31 +70,13 @@
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
     {% for v in veiculos %}
-    <a href="/veiculos/{{ v.slug }}" class="block bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">
-        <img src="{{ imagem_src(v.caminho_capa, v.url_imagem_capa, 400, 300) }}" loading="lazy"
-             class="w-full h-44 object-cover bg-zinc-100" alt="{{ v.marca }} {{ v.modelo }}">
-        <div class="p-4">
-            <h3 class="font-semibold text-zinc-900">{{ v.marca }} {{ v.modelo }}</h3>
-            <p class="text-zinc-500 text-xs mb-2">{{ v.versao or "" }}</p>
-            <p class="text-brand font-bold text-lg">R$ {{ v.preco|brl }}</p>
-            <p class="text-zinc-500 text-xs mt-1">{{ v.ano }} · {{ "{:,}".format(v.quilometragem or 0).replace(",", ".") }} km{% if v.cambio %} · {{ v.cambio }}{% endif %}</p>
-        </div>
-    </a>
+    {% include "_vehicle_card.html" %}
     {% else %}
     <p class="text-zinc-500 text-sm col-span-full text-center py-10">Nenhum veículo encontrado com esses filtros.</p>
     {% endfor %}
 </div>
 
 <script>
-function maskPreco(el) {
-    let digits = el.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
-    if (!digits) { el.value = ""; return; }
-    while (digits.length < 3) digits = "0" + digits;
-    const cents = digits.slice(-2);
-    const intPart = digits.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    el.value = intPart + "," + cents;
-}
-
 document.getElementById("filtro-estoque-form").addEventListener("submit", function () {
     ["preco_min", "preco_max"].forEach(function (name) {
         const el = this.elements[name];

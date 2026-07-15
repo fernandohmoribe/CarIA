@@ -23,7 +23,7 @@
 
     {% if endereco_loja or horario_loja %}
     <div class="bg-white border border-zinc-200 rounded-2xl p-5 mt-10 shadow-sm text-sm text-zinc-600">
-        {% if endereco_loja %}<p>📍 {{ endereco_loja }}</p>{% endif %}
+        {% if endereco_loja %}<p>{% include "_icons/pin.html" %}{{ endereco_loja }}</p>{% endif %}
         {% if horario_loja %}<p class="mt-1">🕐 {{ horario_loja }}</p>{% endif %}
     </div>
     {% endif %}

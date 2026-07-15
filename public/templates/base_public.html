@@ -9,10 +9,14 @@
     <script>
         tailwind.config = { theme: { extend: { colors: { brand: { DEFAULT: '#ee353e', dark: '#c22029' } } } } }
     </script>
+    <script src="/static/site.js" defer></script>
     <style>
         body { background: #f4f4f5; }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
+        [data-favorito-slug] { color: #a1a1aa; }
+        [data-favorito-slug].is-favorito { color: #ee353e; }
+        [data-favorito-slug].is-favorito svg { fill: currentColor; }
     </style>
 </head>
 <body class="bg-zinc-100 text-zinc-800 min-h-screen">
@@ -30,6 +34,8 @@
             <a href="/" class="shrink-0"><img src="/static/logo.png" alt="{{ nome_loja }}" class="h-12"></a>
             <nav class="hidden sm:flex items-center gap-8 flex-1">
                 <a href="/veiculos" class="text-zinc-300 text-sm hover:text-white transition">Estoque</a>
+                <a href="/favoritos" class="text-zinc-300 text-sm hover:text-white transition">Favoritos</a>
+                <a href="/avaliacao" class="text-zinc-300 text-sm hover:text-white transition">Avaliação</a>
                 <a href="/contato" class="text-zinc-300 text-sm hover:text-white transition">Contato</a>
             </nav>
             <div class="w-8 sm:hidden" aria-hidden="true"></div>
@@ -39,6 +45,8 @@
             <a href="/sobre-nos" onclick="toggleMenuMobile()" class="px-2 py-2 rounded text-zinc-300 text-sm hover:text-white hover:bg-zinc-900 transition">Sobre Nós</a>
             <a href="/novidades" onclick="toggleMenuMobile()" class="px-2 py-2 rounded text-zinc-300 text-sm hover:text-white hover:bg-zinc-900 transition">Novidades</a>
             <a href="/veiculos" onclick="toggleMenuMobile()" class="px-2 py-2 rounded text-zinc-300 text-sm hover:text-white hover:bg-zinc-900 transition">Estoque</a>
+            <a href="/favoritos" onclick="toggleMenuMobile()" class="px-2 py-2 rounded text-zinc-300 text-sm hover:text-white hover:bg-zinc-900 transition">Favoritos</a>
+            <a href="/avaliacao" onclick="toggleMenuMobile()" class="px-2 py-2 rounded text-zinc-300 text-sm hover:text-white hover:bg-zinc-900 transition">Avaliação</a>
             <a href="/contato" onclick="toggleMenuMobile()" class="px-2 py-2 rounded text-zinc-300 text-sm hover:text-white hover:bg-zinc-900 transition">Contato</a>
         </nav>
     </header>
@@ -68,7 +76,7 @@
             {% if telefone_loja %}
             <div>
                 <h3 class="text-white font-semibold text-xs tracking-wide mb-3">CONTATO</h3>
-                <p>📞 {{ telefone_loja }}</p>
+                <p>{% include "_icons/phone.html" %}{{ telefone_loja }}</p>
                 <a href="/contato" class="text-brand text-xs hover:underline mt-2 inline-block">Fale conosco →</a>
             </div>
             {% endif %}
@@ -86,9 +94,9 @@
 
     {% if whatsapp_link %}
     <a href="{{ whatsapp_link }}" target="_blank" rel="noopener"
-       class="fixed bottom-5 right-5 bg-[#25D366] text-white rounded-full w-14 h-14 flex items-center justify-center text-2xl shadow-lg hover:brightness-95 transition z-50"
+       class="fixed bottom-5 right-5 bg-[#25D366] text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:brightness-95 transition z-50"
        aria-label="Falar no WhatsApp">
-        💬
+        {% include "_icons/chat.html" %}
     </a>
     {% endif %}
 </body>

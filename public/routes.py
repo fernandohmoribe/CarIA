@@ -24,7 +24,9 @@ from database import (
     obter_ou_criar_lead,
     obter_posts_instagram_visiveis,
     obter_veiculo_publico_por_slug,
+    obter_veiculos_parecidos,
     obter_veiculos_publicos_filtrados,
+    obter_veiculos_publicos_por_slugs,
 )
 from dealership_config import DEALERSHIP_ADDRESS, DEALERSHIP_HOURS, DEALERSHIP_NAME, DEALERSHIP_PHONE
 
@@ -227,13 +229,30 @@ def _analisar_float(value: str | None) -> float | None:
         return None
 
 
+def _analisar_int(value: str | None) -> int | None:
+    """Mesmo espírito de `_analisar_float`, mas pra campos que são coluna Integer (ano, km) —
+    `float("2020")` funciona mas devolve 2020.0, o que é semanticamente errado aqui."""
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
 @router.get("/veiculos", response_class=HTMLResponse)
 async def veiculos_lista(request: Request, marca: str | None = None, preco_min: str | None = None,
                           preco_max: str | None = None, carroceria: str | None = None,
                           cambio: str | None = None, combustivel: str | None = None,
-                          ordenar: str | None = None):
+                          ordenar: str | None = None, busca: str | None = None,
+                          ano_min: str | None = None, ano_max: str | None = None,
+                          cor: str | None = None, km_max: str | None = None):
     preco_min = _analisar_float(preco_min)
     preco_max = _analisar_float(preco_max)
+    ano_min = _analisar_int(ano_min)
+    ano_max = _analisar_int(ano_max)
+    km_max = _analisar_int(km_max)
+    busca = (busca or "").strip() or None
     db = SessionLocal()
     try:
         loja = obter_loja_padrao(db)
@@ -241,6 +260,7 @@ async def veiculos_lista(request: Request, marca: str | None = None, preco_min: 
         veiculos = obter_veiculos_publicos_filtrados(
             db, loja_id, marca=marca, preco_min=preco_min, preco_max=preco_max,
             carroceria=carroceria, cambio=cambio, combustivel=combustivel, ordenar=ordenar,
+            busca=busca, ano_min=ano_min, ano_max=ano_max, cor=cor, km_max=km_max,
         )
         opcoes = obter_opcoes_filtro_publico(db, loja_id)
         return templates.TemplateResponse(
@@ -251,7 +271,8 @@ async def veiculos_lista(request: Request, marca: str | None = None, preco_min: 
                 "filtros": {
                     "marca": marca or "", "preco_min": preco_min, "preco_max": preco_max,
                     "carroceria": carroceria or "", "cambio": cambio or "", "combustivel": combustivel or "",
-                    "ordenar": ordenar or "preco_asc",
+                    "ordenar": ordenar or "preco_asc", "busca": busca or "",
+                    "ano_min": ano_min, "ano_max": ano_max, "cor": cor or "", "km_max": km_max,
                 },
             },
         )
@@ -264,11 +285,25 @@ async def veiculos_detalhe(request: Request, slug: str):
     db = SessionLocal()
     try:
         loja = obter_loja_padrao(db)
-        veiculo = obter_veiculo_publico_por_slug(db, loja.id if loja else None, slug)
+        loja_id = loja.id if loja else None
+        veiculo = obter_veiculo_publico_por_slug(db, loja_id, slug)
         if not veiculo:
             return HTMLResponse("Veículo não encontrado.", status_code=404)
+        veiculos_parecidos = obter_veiculos_parecidos(db, loja_id, veiculo)
+
+        link_compartilhar = None
+        if WHATSAPP_LINK:
+            veiculo_url = str(request.base_url).rstrip("/") + f"/veiculos/{veiculo.slug}"
+            texto_compartilhar = f"Olha esse {veiculo.marca} {veiculo.modelo} que encontrei: {veiculo_url}"
+            link_compartilhar = f"{WHATSAPP_LINK}?text={quote(texto_compartilhar)}"
+
         return templates.TemplateResponse(
-            request, "vehicle_detail.html", {**_contexto_base(request), "veiculo": veiculo, "enviado": False}
+            request,
+            "vehicle_detail.html",
+            {
+                **_contexto_base(request), "veiculo": veiculo, "veiculos_parecidos": veiculos_parecidos,
+                "link_compartilhar": link_compartilhar, "enviado": False,
+            },
         )
     finally:
         db.close()
@@ -323,5 +358,76 @@ async def veiculo_interesse_enviar(request: Request, slug: str):
         return templates.TemplateResponse(
             request, "vehicle_detail.html", {**_contexto_base(request), "veiculo": veiculo, "enviado": True}
         )
+    finally:
+        db.close()
+
+
+@router.get("/favoritos", response_class=HTMLResponse)
+async def favoritos(request: Request):
+    return templates.TemplateResponse(request, "favoritos.html", {**_contexto_base(request)})
+
+
+@router.get("/api/favoritos")
+async def api_favoritos(slugs: str = ""):
+    lista_slugs = list({s.strip() for s in slugs.split(",") if s.strip()})[:50]
+    db = SessionLocal()
+    try:
+        loja = obter_loja_padrao(db)
+        loja_id = loja.id if loja else None
+        veiculos = obter_veiculos_publicos_por_slugs(db, loja_id, lista_slugs)
+        return JSONResponse([
+            {
+                "slug": v.slug, "marca": v.marca, "modelo": v.modelo, "versao": v.versao,
+                "preco": v.preco, "ano": v.ano, "quilometragem": v.quilometragem,
+                "imagem": template_helpers.imagem_src(v.caminho_capa, v.url_imagem_capa, 400, 300),
+            }
+            for v in veiculos
+        ])
+    finally:
+        db.close()
+
+
+@router.get("/avaliacao", response_class=HTMLResponse)
+async def avaliacao(request: Request):
+    return templates.TemplateResponse(request, "avaliacao.html", {**_contexto_base(request), "enviado": False})
+
+
+@router.post("/avaliacao")
+async def avaliacao_enviar(request: Request):
+    ip_cliente = _ip_cliente(request)
+    if _rate_limit.esta_limitado_por_taxa(
+        f"avaliacao:{ip_cliente}", FORM_RATE_LIMIT_MAX, FORM_RATE_LIMIT_WINDOW, FORM_RATE_LIMIT_BLOCK
+    ):
+        return JSONResponse({"erro": "Muitas tentativas. Tente novamente em alguns minutos."}, status_code=429)
+
+    form = await request.form()
+    nome = (form.get("nome") or "").strip()
+    email = (form.get("email") or "").strip()
+    telefone_raw = (form.get("telefone") or "").strip()
+    veiculo_troca_desc = (form.get("veiculo_troca_desc") or "").strip()
+    numero_telefone = re.sub(r"\D", "", telefone_raw)
+
+    db = SessionLocal()
+    try:
+        loja = obter_loja_padrao(db)
+        loja_id = loja.id if loja else None
+
+        if not nome or not numero_telefone or not veiculo_troca_desc:
+            return templates.TemplateResponse(
+                request, "avaliacao.html",
+                {**_contexto_base(request), "enviado": False, "erro": "Preencha nome, telefone e a descrição do seu veículo."},
+                status_code=400,
+            )
+
+        lead, eh_novo = obter_ou_criar_lead(db, loja_id, numero_telefone)
+        if eh_novo:
+            lead.origem = "site"
+            db.commit()
+        atualizar_lead(
+            db, lead,
+            {"nome": nome, "email": email, "telefone": telefone_raw, "tem_troca": True, "veiculo_troca_desc": veiculo_troca_desc},
+        )
+
+        return templates.TemplateResponse(request, "avaliacao.html", {**_contexto_base(request), "enviado": True})
     finally:
         db.close()

@@ -7,7 +7,8 @@
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
     <div>
         {% set capa_src = imagem_src(veiculo.caminho_capa, veiculo.url_imagem_capa, 1000, 750) %}
-        <img id="main-photo" src="{{ capa_src }}" class="w-full rounded-2xl bg-zinc-200 object-cover" style="aspect-ratio: 4/3;" alt="{{ veiculo.marca }} {{ veiculo.modelo }}">
+        <img id="main-photo" src="{{ capa_src }}" onclick="abrirLightbox(this.src)"
+             class="w-full rounded-2xl bg-zinc-200 object-cover cursor-zoom-in" style="aspect-ratio: 4/3;" alt="{{ veiculo.marca }} {{ veiculo.modelo }}">
         {% if veiculo.imagens|length > 1 %}
         <div class="flex gap-2 mt-2 overflow-x-auto pb-1">
             {% for img in veiculo.imagens %}
@@ -20,9 +21,27 @@
     </div>
 
     <div>
-        <h1 class="text-2xl font-semibold text-zinc-900">{{ veiculo.marca }} {{ veiculo.modelo }}</h1>
-        <p class="text-zinc-500 text-sm mt-1">{{ veiculo.versao or "" }}</p>
-        <p class="text-brand text-2xl font-bold mt-3">R$ {{ veiculo.preco|brl }}</p>
+        <div class="flex items-start justify-between gap-3">
+            <div>
+                <h1 class="text-2xl font-semibold text-zinc-900">{{ veiculo.marca }} {{ veiculo.modelo }}</h1>
+                <p class="text-zinc-500 text-sm mt-1">{{ veiculo.versao or "" }}</p>
+            </div>
+            <button type="button" data-favorito-slug="{{ veiculo.slug }}"
+                    onclick="alternarFavorito('{{ veiculo.slug }}', this)"
+                    aria-label="Favoritar" aria-pressed="false"
+                    class="shrink-0 bg-zinc-100 rounded-full w-10 h-10 flex items-center justify-center">
+                {% include "_icons/heart.html" %}
+            </button>
+        </div>
+        <div class="flex items-center gap-3 mt-3">
+            <p class="text-brand text-2xl font-bold">R$ {{ veiculo.preco|brl }}</p>
+            {% if link_compartilhar %}
+            <a href="{{ link_compartilhar }}" target="_blank" rel="noopener"
+               class="text-zinc-500 text-xs hover:text-zinc-700 border border-zinc-300 rounded-full px-3 py-1 flex items-center">
+                {% include "_icons/share.html" %} Compartilhar
+            </a>
+            {% endif %}
+        </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4 text-sm">
             {% if veiculo.cidade %}<div><span class="text-zinc-500">Cidade</span><br>{{ veiculo.cidade }}</div>{% endif %}
@@ -83,6 +102,90 @@
             </form>
             {% endif %}
         </div>
+
+        <div class="bg-white border border-zinc-200 rounded-2xl p-5 mt-4 shadow-sm">
+            <h2 class="text-sm font-semibold text-zinc-900 mb-3">Simule seu financiamento</h2>
+            <label class="text-xs text-zinc-500">Entrada</label>
+            <input id="sim-entrada" type="text" inputmode="decimal" placeholder="Valor de entrada"
+                   oninput="maskPreco(this); simularFinanciamento()"
+                   class="w-full bg-zinc-50 border border-zinc-300 rounded-lg px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 mt-1">
+            <label class="text-xs text-zinc-500 mt-3 block">Parcelas</label>
+            <select id="sim-parcelas" onchange="simularFinanciamento()"
+                    class="w-full bg-zinc-50 border border-zinc-300 rounded-lg px-3 py-2 text-sm text-zinc-900 mt-1">
+                <option value="12">12x</option>
+                <option value="24">24x</option>
+                <option value="36" selected>36x</option>
+                <option value="48">48x</option>
+                <option value="60">60x</option>
+            </select>
+            <p id="sim-resultado" class="text-brand text-lg font-bold mt-3"></p>
+            <p class="text-zinc-400 text-xs mt-1">Simulação ilustrativa, sujeita a análise e aprovação de crédito. Consulte um consultor para condições reais.</p>
+            <a id="sim-cta-whatsapp" href="#" target="_blank" rel="noopener"
+               class="w-full block text-center bg-brand text-white font-medium rounded-lg py-2 text-sm mt-3 hover:bg-brand-dark transition">
+                Falar com um consultor sobre essa simulação
+            </a>
+        </div>
     </div>
 </div>
+
+{% if veiculos_parecidos %}
+<div class="mt-10">
+    <h2 class="text-lg font-semibold text-zinc-900 mb-4">Veículos parecidos</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {% for v in veiculos_parecidos %}
+        {% include "_vehicle_card.html" %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<dialog id="foto-lightbox" class="backdrop:bg-black/80 bg-transparent p-0 max-w-3xl w-full rounded-2xl">
+    <img id="lightbox-img" src="" class="w-full h-auto rounded-2xl" alt="{{ veiculo.marca }} {{ veiculo.modelo }}">
+</dialog>
+
+<script>
+function abrirLightbox(src) {
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('foto-lightbox').showModal();
+}
+
+document.getElementById('foto-lightbox').addEventListener('click', function (e) {
+    if (e.target === this) { this.close(); }
+});
+
+const SIM_PRECO_VEICULO = {{ veiculo.preco or 0 }};
+const SIM_TAXA_MENSAL = 0.0189; // taxa ilustrativa — CONFIRMAR COM A LOJA ANTES DE PUBLICAR
+const SIM_WHATSAPP_BASE = {{ (whatsapp_link or "") | tojson }};
+const SIM_VEICULO_NOME = {{ (veiculo.marca ~ " " ~ veiculo.modelo) | tojson }};
+
+function simularFinanciamento() {
+    const entradaEl = document.getElementById('sim-entrada');
+    const entrada = parseFloat((entradaEl.value || "0").replace(/\./g, "").replace(",", ".")) || 0;
+    const parcelas = parseInt(document.getElementById('sim-parcelas').value, 10);
+    const financiado = Math.max(SIM_PRECO_VEICULO - entrada, 0);
+    const resultadoEl = document.getElementById('sim-resultado');
+    const ctaEl = document.getElementById('sim-cta-whatsapp');
+
+    if (financiado <= 0) {
+        resultadoEl.textContent = "Nenhum financiamento necessário com essa entrada.";
+        ctaEl.classList.add("hidden");
+        return;
+    }
+    const i = SIM_TAXA_MENSAL;
+    const parcela = (financiado * i) / (1 - Math.pow(1 + i, -parcelas));
+    resultadoEl.textContent = parcelas + "x de R$ " + parcela.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    if (SIM_WHATSAPP_BASE) {
+        const texto = "Olá! Simulei o financiamento do " + SIM_VEICULO_NOME +
+            " com entrada de R$ " + entrada.toLocaleString('pt-BR', {minimumFractionDigits: 2}) +
+            " em " + parcelas + "x — gostaria de saber as condições reais.";
+        ctaEl.href = SIM_WHATSAPP_BASE + "?text=" + encodeURIComponent(texto);
+        ctaEl.classList.remove("hidden");
+    } else {
+        ctaEl.classList.add("hidden");
+    }
+}
+
+document.addEventListener('DOMContentLoaded', simularFinanciamento);
+</script>
 {% endblock %}
