@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import rate_limit as _rate_limit
 import template_helpers
@@ -54,6 +55,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title=f"{DEALERSHIP_NAME} — WhatsApp Bot")
+
+# Aplicado aqui (nível de app) em vez de via `uvicorn.run(proxy_headers=..., forwarded_allow_ips=...)`
+# porque esses kwargs não chegam no processo real quando reload=True está ligado (o
+# supervisor de reload do Uvicorn não propaga esse parâmetro pro subprocesso — confirmado
+# testando com/sem reload, mesmo IP de origem). Aqui vira parte do próprio app, que já é
+# recarregado corretamente a cada mudança. Sem isso, request.base_url() atrás do Caddy sempre
+# reportaria http:// mesmo com HTTPS de verdade na frente, quebrando URL canônica/OG/sitemap.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY")
 if not SESSION_SECRET_KEY:
@@ -397,4 +406,6 @@ async def health():
 if __name__ == "__main__":
     import uvicorn
     porta = int(os.getenv("PORT", 3000))
+    # Confiança em X-Forwarded-* fica no ProxyHeadersMiddleware acima (não aqui via
+    # proxy_headers=/forwarded_allow_ips=) — ver comentário junto do app.add_middleware.
     uvicorn.run("main:app", host="0.0.0.0", port=porta, reload=True, reload_includes=["*.py", "*.env"])
