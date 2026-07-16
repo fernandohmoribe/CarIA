@@ -1,5 +1,8 @@
 {% extends "base_public.html" %}
 {% block title %}{{ veiculo.marca }} {{ veiculo.modelo }}{% endblock %}
+{% block meta_description %}{{ descricao_veiculo(veiculo, max_chars=155) }}{% endblock %}
+{% block og_image %}{% if veiculo.caminho_capa or veiculo.url_imagem_capa %}{{ url_absoluta(request, imagem_src(veiculo.caminho_capa, veiculo.url_imagem_capa, 1000, 750)) }}{% else %}{{ og_imagem_padrao }}{% endif %}{% endblock %}
+{% block json_ld_extra %}<script type="application/ld+json">{{ json_ld_veiculo(veiculo, request) | safe }}</script>{% endblock %}
 {% block content %}
 
 <a href="/veiculos" class="text-zinc-500 text-sm hover:text-zinc-700">← Voltar pros veículos</a>
@@ -69,9 +72,7 @@
         </div>
         {% endif %}
 
-        {% if veiculo.descricao %}
-        <p class="text-zinc-700 text-sm mt-4 whitespace-pre-line leading-relaxed">{{ veiculo.descricao }}</p>
-        {% endif %}
+        <p class="text-zinc-700 text-sm mt-4 whitespace-pre-line leading-relaxed">{{ descricao_veiculo(veiculo) }}</p>
 
         {% if veiculo.destaques() %}
         <ul class="text-zinc-600 text-sm mt-4 grid grid-cols-2 gap-x-4 gap-y-1">

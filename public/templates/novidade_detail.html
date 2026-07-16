@@ -1,5 +1,7 @@
 {% extends "base_public.html" %}
 {% block title %}{{ post.titulo }}{% endblock %}
+{% block meta_description %}{{ post.resumo or meta_descricao_padrao }}{% endblock %}
+{% block og_image %}{% if post.caminho_local_imagem or post.url_imagem %}{{ url_absoluta(request, imagem_src(post.caminho_local_imagem, post.url_imagem, 1200, 675)) }}{% else %}{{ og_imagem_padrao }}{% endif %}{% endblock %}
 {% block content %}
 
 <div class="max-w-2xl mx-auto py-6">

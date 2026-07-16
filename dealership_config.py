@@ -28,6 +28,10 @@ DEALERSHIP_ADDRESS = os.getenv("DEALERSHIP_ADDRESS", "")
 DEALERSHIP_HOURS = os.getenv("DEALERSHIP_HOURS", "")
 DEALERSHIP_STAFF_PHONE = os.getenv("DEALERSHIP_STAFF_PHONE", "")
 
+# Analytics do site público (opcional) — vazio = não renderiza o script, cada um independe do outro.
+GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "")
+META_PIXEL_ID = os.getenv("META_PIXEL_ID", "")
+
 WAHA_BASE_URL = os.getenv("WAHA_BASE_URL", "http://localhost:8080")
 WAHA_SESSION = os.getenv("WAHA_SESSION", "default")
 WAHA_API_KEY = os.getenv("WAHA_API_KEY", "")

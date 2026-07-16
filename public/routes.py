@@ -4,11 +4,12 @@ home institucional, sobre nós, contato e novidades da loja.
 """
 
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 import rate_limit as _rate_limit
@@ -28,7 +29,15 @@ from database import (
     obter_veiculos_publicos_filtrados,
     obter_veiculos_publicos_por_slugs,
 )
-from dealership_config import DEALERSHIP_ADDRESS, DEALERSHIP_HOURS, DEALERSHIP_NAME, DEALERSHIP_PHONE
+from dealership_config import (
+    DEALERSHIP_ADDRESS,
+    DEALERSHIP_CITY,
+    DEALERSHIP_HOURS,
+    DEALERSHIP_NAME,
+    DEALERSHIP_PHONE,
+    GA_MEASUREMENT_ID,
+    META_PIXEL_ID,
+)
 
 QUEM_SOMOS = (
     "Somos especializados na venda de veículos novos e usados, nacionais e importados. Com "
@@ -36,6 +45,12 @@ QUEM_SOMOS = (
     "são revisados criteriosamente, possibilitando dar aos nossos clientes tranquilidade na "
     "hora da compra. Não perca tempo! Compre seu veículo com quem mais entende do assunto. "
     "Nossos vendedores terão o prazer em atendê-lo."
+)
+
+META_DESCRICAO_PADRAO = (
+    f"Confira o estoque de veículos seminovos da {DEALERSHIP_NAME}"
+    + (f" em {DEALERSHIP_CITY}" if DEALERSHIP_CITY else "")
+    + ". Compare preço, ano e km, e fale com um consultor."
 )
 
 router = APIRouter()
@@ -63,6 +78,10 @@ def _contexto_base(request: Request) -> dict:
         "horario_loja": DEALERSHIP_HOURS,
         "quem_somos": QUEM_SOMOS,
         "whatsapp_link": WHATSAPP_LINK,
+        "meta_descricao_padrao": META_DESCRICAO_PADRAO,
+        "og_imagem_padrao": template_helpers.url_absoluta(request, "/static/logo.png"),
+        "ga_measurement_id": GA_MEASUREMENT_ID,
+        "meta_pixel_id": META_PIXEL_ID,
     }
 
 
@@ -293,7 +312,7 @@ async def veiculos_detalhe(request: Request, slug: str):
 
         link_compartilhar = None
         if WHATSAPP_LINK:
-            veiculo_url = str(request.base_url).rstrip("/") + f"/veiculos/{veiculo.slug}"
+            veiculo_url = template_helpers.url_absoluta(request, f"/veiculos/{veiculo.slug}")
             texto_compartilhar = f"Olha esse {veiculo.marca} {veiculo.modelo} que encontrei: {veiculo_url}"
             link_compartilhar = f"{WHATSAPP_LINK}?text={quote(texto_compartilhar)}"
 
@@ -431,3 +450,53 @@ async def avaliacao_enviar(request: Request):
         return templates.TemplateResponse(request, "avaliacao.html", {**_contexto_base(request), "enviado": True})
     finally:
         db.close()
+
+
+_PAGINAS_ESTATICAS_SITEMAP = ["/", "/veiculos", "/sobre-nos", "/contato", "/novidades", "/avaliacao"]
+
+
+@router.get("/sitemap.xml")
+async def sitemap_xml(request: Request):
+    """Só páginas estáticas + veículos/novidades reais (mesmo filtro disponível+publicado
+    que o catálogo já usa) — /favoritos fica de fora, é 100% client-side, sem conteúdo pro
+    crawler indexar."""
+    db = SessionLocal()
+    try:
+        loja = obter_loja_padrao(db)
+        loja_id = loja.id if loja else None
+        veiculos = obter_veiculos_publicos_filtrados(db, loja_id)
+        novidades = obter_novidades_publicas(db, loja_id) if loja_id else []
+
+        urlset = ET.Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+        for caminho in _PAGINAS_ESTATICAS_SITEMAP:
+            url_el = ET.SubElement(urlset, "url")
+            ET.SubElement(url_el, "loc").text = template_helpers.url_absoluta(request, caminho)
+        for v in veiculos:
+            url_el = ET.SubElement(urlset, "url")
+            ET.SubElement(url_el, "loc").text = template_helpers.url_absoluta(request, f"/veiculos/{v.slug}")
+            if v.sincronizado_em:
+                ET.SubElement(url_el, "lastmod").text = v.sincronizado_em.date().isoformat()
+        for n in novidades:
+            url_el = ET.SubElement(urlset, "url")
+            ET.SubElement(url_el, "loc").text = template_helpers.url_absoluta(request, f"/novidades/{n.slug}")
+            if n.criado_em:
+                ET.SubElement(url_el, "lastmod").text = n.criado_em.date().isoformat()
+
+        xml_bytes = ET.tostring(urlset, encoding="utf-8", xml_declaration=True)
+        return Response(content=xml_bytes, media_type="application/xml")
+    finally:
+        db.close()
+
+
+@router.get("/robots.txt")
+async def robots_txt(request: Request):
+    """Gerado na hora (não arquivo estático) pra linha Sitemap: sempre usar url_absoluta —
+    continua certa sem precisar editar nada no dia em que o domínio/HTTPS entrar."""
+    linhas = [
+        "User-agent: *",
+        "Disallow: /admin",
+        "Disallow: /api/",
+        "Allow: /",
+        f"Sitemap: {template_helpers.url_absoluta(request, '/sitemap.xml')}",
+    ]
+    return PlainTextResponse("\n".join(linhas) + "\n")

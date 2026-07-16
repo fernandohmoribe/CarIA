@@ -3,7 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% if ga_measurement_id %}
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ ga_measurement_id }}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '{{ ga_measurement_id }}');
+    </script>
+    {% endif %}
+    {% if meta_pixel_id %}
+    <script>
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', '{{ meta_pixel_id }}');
+        fbq('track', 'PageView');
+    </script>
+    <noscript><img height="1" width="1" style="display:none"
+        src="https://www.facebook.com/tr?id={{ meta_pixel_id }}&ev=PageView&noscript=1"
+    ></noscript>
+    {% endif %}
     <title>{% block title %}Veículos{% endblock %} — {{ nome_loja }}</title>
+    <meta name="description" content="{% block meta_description %}{{ meta_descricao_padrao }}{% endblock %}">
+    <meta name="robots" content="{% block robots_meta %}index,follow{% endblock %}">
+    <link rel="canonical" href="{{ url_absoluta(request, request.url.path) }}">
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:site_name" content="{{ nome_loja }}">
+    <meta property="og:title" content="{% block og_title %}{{ self.title() }} — {{ nome_loja }}{% endblock %}">
+    <meta property="og:description" content="{{ self.meta_description() }}">
+    <meta property="og:image" content="{% block og_image %}{{ og_imagem_padrao }}{% endblock %}">
+    <meta property="og:url" content="{{ url_absoluta(request, request.url.path) }}">
+    <script type="application/ld+json">{{ json_ld_loja(request) | safe }}</script>
+    {% block json_ld_extra %}{% endblock %}
     <link rel="shortcut icon" href="/static/favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
