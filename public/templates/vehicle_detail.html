@@ -50,10 +50,10 @@
             {% if veiculo.cidade %}<div><span class="text-zinc-500">Cidade</span><br>{{ veiculo.cidade }}</div>{% endif %}
             <div><span class="text-zinc-500">Ano</span><br>{{ veiculo.ano }}</div>
             <div><span class="text-zinc-500">KM</span><br>{{ "{:,}".format(veiculo.quilometragem or 0).replace(",", ".") }}</div>
-            <div><span class="text-zinc-500">Câmbio</span><br>{{ veiculo.cambio }}</div>
-            <div><span class="text-zinc-500">Carroceria</span><br>{{ veiculo.carroceria }}</div>
-            <div><span class="text-zinc-500">Combustível</span><br>{{ veiculo.combustivel }}</div>
-            <div><span class="text-zinc-500">Cor</span><br>{{ veiculo.cor }}</div>
+            {% if veiculo.cambio %}<div><span class="text-zinc-500">Câmbio</span><br>{{ veiculo.cambio }}</div>{% endif %}
+            {% if veiculo.carroceria %}<div><span class="text-zinc-500">Carroceria</span><br>{{ veiculo.carroceria }}</div>{% endif %}
+            {% if veiculo.combustivel %}<div><span class="text-zinc-500">Combustível</span><br>{{ veiculo.combustivel }}</div>{% endif %}
+            {% if veiculo.cor %}<div><span class="text-zinc-500">Cor</span><br>{{ veiculo.cor }}</div>{% endif %}
             {% if veiculo.final_placa %}<div><span class="text-zinc-500">Final de placa</span><br>{{ veiculo.final_placa }}</div>{% endif %}
         </div>
 

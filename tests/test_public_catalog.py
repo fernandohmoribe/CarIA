@@ -75,6 +75,17 @@ def test_public_vehicle_detail_200_for_published_404_for_hidden():
     assert resp.status_code == 404
 
 
+def test_vehicle_detail_hides_specs_grid_fields_when_empty_instead_of_literal_none():
+    loja_id = _loja_id()
+    # _make_veiculo não define cambio/carroceria/combustivel/cor -> ficam None no banco
+    slug = _make_veiculo(loja_id, "catalogo-detalhe-specs-vazias", "Fiat", "Uno Specs Vazias")
+
+    client = TestClient(app)
+    resp = client.get(f"/veiculos/{slug}")
+    assert resp.status_code == 200
+    assert "None" not in resp.text
+
+
 def test_submit_interest_form_creates_lead_visible_in_admin():
     from database import obter_todos_leads
 
