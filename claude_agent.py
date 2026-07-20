@@ -228,7 +228,15 @@ def obter_resposta_ia(
     dia_semana = DIAS_SEMANA[agora.weekday()]
     periodo = "manhã" if agora.hour < 12 else "tarde" if agora.hour < 18 else "noite"
     hoje = f"{dia_semana}, {agora.strftime('%d/%m/%Y')}, {periodo} (horário de Brasília)"
-    system_com_data = f"Hoje é {hoje}.\n\n{SYSTEM_PROMPT}"
+    # A data/período muda várias vezes por dia — se ficasse no mesmo bloco cacheado que o
+    # prompt estático (~7-8k tokens), qualquer mudança de dia/período invalidava o cache do
+    # prompt inteiro. Separando em dois blocos, o cache_control fica só no bloco estático
+    # (que não muda), e a data vai num bloco à parte, pequeno e não-cacheado — o prompt
+    # grande sobrevive o dia inteiro no cache em vez de resetar a cada troca de período.
+    system_blocks = [
+        {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": f"Hoje é {hoje}."},
+    ]
 
     db = SessionLocal()
     try:
@@ -245,7 +253,7 @@ def obter_resposta_ia(
         response = _client.messages.create(
             model=MODEL,
             max_tokens=MAX_TOKENS,
-            system=[{"type": "text", "text": system_com_data, "cache_control": {"type": "ephemeral"}}],
+            system=system_blocks,
             messages=mensagens_api,
             tools=TOOLS,
         )
@@ -283,7 +291,7 @@ def obter_resposta_ia(
     response = _client.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
-        system=[{"type": "text", "text": system_com_data, "cache_control": {"type": "ephemeral"}}],
+        system=system_blocks,
         messages=mensagens_api,
     )
     texto_final = "".join(block.text for block in response.content if block.type == "text").strip()
