@@ -369,6 +369,59 @@ def test_processar_mensagem_nunca_manda_whatsapp_pro_vendedor():
     assert telefones_notificados == [telefone]  # só respondeu o próprio cliente
 
 
+def test_processar_mensagem_completa_atraso_minimo_quando_ia_responde_rapido():
+    """SEGUNDOS_MINIMOS_RESPOSTA existe pra não responder sempre instantaneamente (padrão que
+    a WhatsApp Web não-oficial associa a bot). Se a IA processou rápido, processar_mensagem
+    precisa completar o tempo que falta antes de mandar a resposta.
+
+    Usa um SEGUNDOS_MINIMOS_RESPOSTA pequeno (0.15s) e mede o relógio de verdade em vez de
+    mockar time.monotonic — o event loop do asyncio chama monotonic() internamente por conta
+    própria (scheduling), então mockar o módulo global também distorce a contagem dele."""
+    import asyncio
+    import time as time_module
+
+    import main
+
+    telefone = "5544900000113@c.us"
+
+    with patch.object(main, "SEGUNDOS_MINIMOS_RESPOSTA", 0.15), \
+         patch.object(main, "obter_resposta_ia") as mock_ai, \
+         patch.object(main, "enviar_mensagem", new=AsyncMock()), \
+         patch.object(main, "definir_digitando", new=AsyncMock()):
+        mock_ai.return_value = ("Oi! Já te ajudo 🎯", None, None)
+        inicio = time_module.monotonic()
+        asyncio.run(main.processar_mensagem(telefone, "oi", "Cliente"))
+        decorrido = time_module.monotonic() - inicio
+
+    assert decorrido >= 0.15 * 0.9  # completou o atraso mínimo (tolerância pro overhead do teste)
+
+
+def test_processar_mensagem_nao_atrasa_quando_ia_ja_demorou_o_suficiente():
+    """Se o processamento da IA sozinho já levou mais que o mínimo, não atrasa ainda mais em
+    cima — o atraso é só pra evitar resposta instantânea, não pra deixar tudo mais lento."""
+    import asyncio
+    import time as time_module
+
+    import main
+
+    telefone = "5544900000114@c.us"
+
+    def ia_demorada(**kwargs):
+        time_module.sleep(0.15)
+        return ("Oi! Já te ajudo 🎯", None, None)
+
+    with patch.object(main, "SEGUNDOS_MINIMOS_RESPOSTA", 0.05), \
+         patch.object(main, "obter_resposta_ia", side_effect=ia_demorada), \
+         patch.object(main, "enviar_mensagem", new=AsyncMock()) as mock_send, \
+         patch.object(main, "definir_digitando", new=AsyncMock()):
+        inicio = time_module.monotonic()
+        asyncio.run(main.processar_mensagem(telefone, "oi", "Cliente"))
+        decorrido = time_module.monotonic() - inicio
+
+    mock_send.assert_awaited_once()
+    assert decorrido < 0.15 + 0.1  # não somou o mínimo (0.05s) em cima do tempo que a IA já levou
+
+
 def test_processar_contato_lead_fechado_nunca_manda_whatsapp_pro_vendedor():
     """Mesma trava do teste acima, mas pro outro call site que existia (reengajamento de
     lead fechado) — também não pode mais mandar WhatsApp pro vendedor."""

@@ -5,6 +5,7 @@ import base64
 import logging
 import mimetypes
 import os
+import time
 from collections import OrderedDict
 from datetime import timedelta
 from pathlib import Path
@@ -184,6 +185,12 @@ def _montar_arquivo_imagem(foto: dict) -> dict | None:
 SEGUNDOS_ENTRE_FOTOS = 1.2  # rajada de fotos sem pausa também é o tipo de padrão que
 # WhatsApp (conexão não-oficial) associa a bot — um intervalo pequeno já resolve.
 
+SEGUNDOS_MINIMOS_RESPOSTA = float(os.getenv("SEGUNDOS_MINIMOS_RESPOSTA", "5"))
+# responder em texto instantaneamente, sempre, é outro padrão que a WhatsApp Web
+# não-oficial associa a bot — completa só o tempo que falta pra esse mínimo (o
+# processamento da IA já consome uma parte dele; se já demorou mais que isso sozinho,
+# não atrasa ainda mais em cima).
+
 
 async def enviar_fotos_veiculo(telefone: str, fotos: dict) -> None:
     url = f"{WAHA_BASE_URL}/api/sendImage"
@@ -263,6 +270,7 @@ def _processar_sincrono(telefone: str, texto: str, nome_exibicao: str):
 
 
 async def processar_mensagem(telefone: str, texto: str, nome_exibicao: str) -> None:
+    inicio = time.monotonic()
     await definir_digitando(telefone)
     try:
         # asyncio.to_thread só existe a partir do Python 3.9 — este ambiente roda 3.8.
@@ -270,6 +278,9 @@ async def processar_mensagem(telefone: str, texto: str, nome_exibicao: str) -> N
         texto_ia, _lead_para_notificar, fotos_para_enviar = await loop.run_in_executor(
             None, _processar_sincrono, telefone, texto, nome_exibicao
         )
+        decorrido = time.monotonic() - inicio
+        if decorrido < SEGUNDOS_MINIMOS_RESPOSTA:
+            await asyncio.sleep(SEGUNDOS_MINIMOS_RESPOSTA - decorrido)
         await enviar_mensagem(telefone, texto_ia)
         if fotos_para_enviar:
             await enviar_fotos_veiculo(telefone, fotos_para_enviar)
@@ -406,6 +417,11 @@ async def health():
 if __name__ == "__main__":
     import uvicorn
     porta = int(os.getenv("PORT", 3000))
+    # HOST por padrão fica em 0.0.0.0 (todas as interfaces) pra funcionar igual em qualquer
+    # máquina de dev. Em produção, o .env do servidor pode restringir isso pro IP interno que
+    # o proxy reverso usa pra falar com o app (ex: HOST=172.19.0.1, o gateway da rede Docker
+    # do Caddy) — assim a porta fica inacessível da internet pública, só o proxy alcança.
+    host = os.getenv("HOST", "0.0.0.0")
     # Confiança em X-Forwarded-* fica no ProxyHeadersMiddleware acima (não aqui via
     # proxy_headers=/forwarded_allow_ips=) — ver comentário junto do app.add_middleware.
-    uvicorn.run("main:app", host="0.0.0.0", port=porta, reload=True, reload_includes=["*.py", "*.env"])
+    uvicorn.run("main:app", host=host, port=porta, reload=True, reload_includes=["*.py", "*.env"])

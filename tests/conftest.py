@@ -15,6 +15,8 @@ os.environ.setdefault("ADMIN_USERNAME", "admin")
 os.environ.setdefault("ADMIN_PASSWORD", "test-password")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-placeholder")
 os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret-key")
+os.environ.setdefault("SEGUNDOS_MINIMOS_RESPOSTA", "0")  # sem isso, cada teste que chama
+# processar_mensagem esperaria 5s de verdade — a lógica do atraso tem teste dedicado
 
 # Scripts manuais que batem na IA de verdade (chat_manual.py, scenarios_manual.py,
 # eval_prompt.py) não usam prefixo test_ de propósito — ver CLAUDE.md — então o pytest nem
